@@ -176,9 +176,8 @@ fun InboxScreen(nav: NavController, appVm: AppViewModel, vm: InboxViewModel = vi
             OutlinedButton(
                 onClick = {
                     nav.navigate(Routes.BROWSE) {
-                        popUpTo(Routes.HOME) { saveState = true }
+                        popUpTo(Routes.HOME)
                         launchSingleTop = true
-                        restoreState = true
                     }
                     showTidyFor = null
                 },

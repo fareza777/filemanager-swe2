@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.map
 val Context.zenPrefs by preferencesDataStore("filezen_prefs")
 
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
+enum class ThemeAccent { DYNAMIC, TEAL, SUNSET, VIOLET, OCEAN, ROSE }
 enum class ViewMode { LIST, GRID }
 enum class SortField { NAME, TYPE, SIZE, DATE }
 
@@ -19,6 +20,7 @@ class SettingsStore(private val ctx: Context) {
 
     private object K {
         val THEME = stringPreferencesKey("theme")
+        val ACCENT = stringPreferencesKey("accent")
         val VIEW_MODE = stringPreferencesKey("view_mode")
         val SORT_FIELD = stringPreferencesKey("sort_field")
         val SORT_ASC = booleanPreferencesKey("sort_asc")
@@ -33,6 +35,9 @@ class SettingsStore(private val ctx: Context) {
 
     val theme: Flow<ThemeMode> = ctx.zenPrefs.data.map {
         runCatching { ThemeMode.valueOf(it[K.THEME] ?: "SYSTEM") }.getOrDefault(ThemeMode.SYSTEM)
+    }
+    val accent: Flow<ThemeAccent> = ctx.zenPrefs.data.map {
+        runCatching { ThemeAccent.valueOf(it[K.ACCENT] ?: "TEAL") }.getOrDefault(ThemeAccent.TEAL)
     }
     val viewMode: Flow<ViewMode> = ctx.zenPrefs.data.map {
         runCatching { ViewMode.valueOf(it[K.VIEW_MODE] ?: "LIST") }.getOrDefault(ViewMode.LIST)
@@ -51,6 +56,7 @@ class SettingsStore(private val ctx: Context) {
     }
 
     suspend fun setTheme(v: ThemeMode) = ctx.zenPrefs.edit { it[K.THEME] = v.name }
+    suspend fun setAccent(v: ThemeAccent) = ctx.zenPrefs.edit { it[K.ACCENT] = v.name }
     suspend fun setViewMode(v: ViewMode) = ctx.zenPrefs.edit { it[K.VIEW_MODE] = v.name }
     suspend fun setSortField(v: SortField) = ctx.zenPrefs.edit { it[K.SORT_FIELD] = v.name }
     suspend fun setSortAsc(v: Boolean) = ctx.zenPrefs.edit { it[K.SORT_ASC] = v }

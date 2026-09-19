@@ -19,6 +19,7 @@ class AppViewModel : ViewModel() {
     private val c get() = FileZenApp.c
 
     val theme = c.settings.theme.stateIn(viewModelScope, SharingStarted.Eagerly, ThemeMode.SYSTEM)
+    val accent = c.settings.accent.stateIn(viewModelScope, SharingStarted.Eagerly, ThemeAccent.TEAL)
     val adFree = c.billing.adFree
     val runningOp = c.ops.current
     val lastSummary = c.ops.lastSummary
@@ -129,6 +130,12 @@ class HomeViewModel : ViewModel() {
                 Scanner.recent(recentRoots(), limit = 500)
             }
         }
+    }
+
+    /** Optimistically drop entries after they're moved/deleted. */
+    fun dropRecent(paths: Collection<String>) {
+        _allRecent.value = _allRecent.value.filter { it.path !in paths }
+        _recent.value = _recent.value.filter { it.path !in paths }
     }
 }
 

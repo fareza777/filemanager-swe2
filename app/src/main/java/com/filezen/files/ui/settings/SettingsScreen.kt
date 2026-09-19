@@ -1,9 +1,11 @@
 package com.filezen.files.ui.settings
 
 import android.app.Activity
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
@@ -19,6 +21,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.filezen.files.BuildConfig
 import com.filezen.files.FileZenApp
+import com.filezen.files.data.prefs.ThemeAccent
 import com.filezen.files.data.prefs.ThemeMode
 import com.filezen.files.data.prefs.ViewMode
 import com.filezen.files.ui.AppViewModel
@@ -31,6 +34,7 @@ fun SettingsScreen(nav: NavController, appVm: AppViewModel, inboxVm: InboxViewMo
     val ctx = LocalContext.current
     val c = FileZenApp.c
     val theme by appVm.theme.collectAsState()
+    val accent by appVm.accent.collectAsState()
     val adFree by appVm.adFree.collectAsState()
     val price by c.billing.price.collectAsState()
     val viewMode by c.settings.viewMode.collectAsState(initial = ViewMode.LIST)
@@ -69,6 +73,65 @@ fun SettingsScreen(nav: NavController, appVm: AppViewModel, inboxVm: InboxViewMo
                                 shape = SegmentedButtonDefaults.itemShape(i, ThemeMode.values().size),
                                 icon = { Icon(themeIcons[i], null, Modifier.size(18.dp)) },
                             ) { Text(t.name.lowercase().replaceFirstChar { it.uppercase() }) }
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    Text("Accent colour", fontWeight = FontWeight.Medium)
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        val accentColors = listOf(
+                            ThemeAccent.DYNAMIC to null,
+                            ThemeAccent.TEAL to Color(0xFF006B5D),
+                            ThemeAccent.SUNSET to Color(0xFF9A4520),
+                            ThemeAccent.VIOLET to Color(0xFF6750A4),
+                            ThemeAccent.OCEAN to Color(0xFF0061A4),
+                            ThemeAccent.ROSE to Color(0xFF9C4055),
+                        )
+                        accentColors.forEach { (a, col) ->
+                            val sel = accent == a
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.clickable {
+                                    scope.launch { c.settings.setAccent(a) }
+                                },
+                            ) {
+                                Box(
+                                    Modifier.size(44.dp)
+                                        .then(
+                                            if (sel) Modifier.border(
+                                                3.dp, MaterialTheme.colorScheme.primary,
+                                                CircleShape) else Modifier
+                                        ),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    if (col == null) {
+                                        // Dynamic — split circle
+                                        androidx.compose.foundation.Canvas(Modifier.size(36.dp)) {
+                                            drawArc(Color(0xFF81D5C0), -90f, 180f, useCenter = true)
+                                            drawArc(Color(0xFFEFC36D), 90f, 180f, useCenter = true)
+                                        }
+                                    } else {
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = col,
+                                            modifier = Modifier.size(36.dp),
+                                        ) {}
+                                    }
+                                    if (sel) {
+                                        Icon(Icons.Rounded.Check, null,
+                                            tint = Color.White, modifier = Modifier.size(18.dp))
+                                    }
+                                }
+                                Text(
+                                    a.name.lowercase().replaceFirstChar { it.uppercase() },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (sel) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
                     }
                     Spacer(Modifier.height(16.dp))

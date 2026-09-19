@@ -56,7 +56,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             val appVm: AppViewModel = viewModel()
             val theme by appVm.theme.collectAsState()
-            FileZenTheme(mode = theme) {
+            val accent by appVm.accent.collectAsState()
+            FileZenTheme(mode = theme, accent = accent) {
                 FileZenApp_(appVm)
             }
         }
@@ -126,16 +127,17 @@ fun FileZenApp_(appVm: AppViewModel) {
                         Triple(Routes.HOME, "Home", Icons.Rounded.Home),
                         Triple(Routes.INBOX, "Inbox", Icons.Rounded.Inbox),
                         Triple(Routes.BROWSE, "Browse", Icons.Rounded.Folder),
-                        Triple(Routes.STORAGE, "Storage", Icons.Rounded.Storage),
+                        Triple(Routes.STORAGE, "Storage", Icons.Rounded.DonutLarge),
                     )
                     items.forEach { (r, label, icon) ->
                         NavigationBarItem(
                             selected = route == r,
                             onClick = {
-                                nav.navigate(r) {
-                                    popUpTo(Routes.HOME) { saveState = true }
-                                    launchSingleTop = true
-                                    restoreState = true
+                                if (route != r) {
+                                    nav.navigate(r) {
+                                        popUpTo(Routes.HOME)
+                                        launchSingleTop = true
+                                    }
                                 }
                             },
                             icon = { Icon(icon, label) },
@@ -198,7 +200,7 @@ fun FileZenApp_(appVm: AppViewModel) {
             composable(Routes.TRASH) { TrashScreen(nav, appVm) }
             composable(Routes.RULES) { SortRulesScreen(nav, appVm) }
             composable(Routes.HISTORY) { HistoryScreen(nav) }
-            composable(Routes.RECENT) { RecentScreen(nav) }
+            composable(Routes.RECENT) { RecentScreen(nav, appVm) }
         }
     }
 }

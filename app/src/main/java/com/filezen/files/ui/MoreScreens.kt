@@ -250,19 +250,55 @@ fun HistoryScreen(nav: NavController, vm: StorageViewModel = viewModel()) {
 /** Every recent file (up to 500) — the Home "See all" destination. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RecentScreen(nav: NavController, vm: HomeViewModel = viewModel()) {
+fun RecentScreen(nav: NavController, appVm: AppViewModel, vm: HomeViewModel = viewModel()) {
     val recent by vm.allRecent.collectAsState()
+    var selection by remember { mutableStateOf(setOf<String>()) }
+    var trashConfirm by remember { mutableStateOf<List<String>?>(null) }
+    val ctx = nav.context
 
     LaunchedEffect(Unit) { vm.loadAllRecent() }
 
+    androidx.activity.compose.BackHandler(enabled = selection.isNotEmpty()) { selection = emptySet() }
+
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Recent files", fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = { nav.popBackStack() }) { Icon(Icons.Rounded.ArrowBack, "Back") }
-                },
-            )
+            if (selection.isNotEmpty()) {
+                TopAppBar(
+                    title = { Text("${selection.size} selected") },
+                    navigationIcon = {
+                        IconButton(onClick = { selection = emptySet() }) {
+                            Icon(Icons.Rounded.Close, "Clear")
+                        }
+                    },
+                    actions = {
+                        if (selection.size == 1) {
+                            IconButton(onClick = {
+                                recent.firstOrNull { it.path == selection.first() }
+                                    ?.let { com.filezen.files.ops.Intents.openWith(ctx, it) }
+                            }) { Icon(Icons.Rounded.OpenInNew, "Open with") }
+                        }
+                        IconButton(onClick = {
+                            com.filezen.files.ops.Intents.share(
+                                ctx, recent.filter { it.path in selection })
+                        }) { Icon(Icons.Rounded.Share, "Share") }
+                        IconButton(onClick = { trashConfirm = selection.toList() }) {
+                            Icon(Icons.Rounded.Delete, "Trash")
+                        }
+                        IconButton(onClick = { selection = recent.map { it.path }.toSet() }) {
+                            Icon(Icons.Rounded.SelectAll, "All")
+                        }
+                    },
+                )
+            } else {
+                TopAppBar(
+                    title = { Text("Recent files", fontWeight = FontWeight.Bold) },
+                    navigationIcon = {
+                        IconButton(onClick = { nav.popBackStack() }) {
+                            Icon(Icons.Rounded.ArrowBack, "Back")
+                        }
+                    },
+                )
+            }
         },
     ) { padding ->
         if (recent.isEmpty()) {
@@ -273,16 +309,36 @@ fun RecentScreen(nav: NavController, vm: HomeViewModel = viewModel()) {
             LazyColumn(Modifier.fillMaxSize().padding(padding)) {
                 items(recent, key = { it.path }) { e ->
                     FileRow(
-                        e = e, selected = false,
+                        e = e, selected = e.path in selection,
                         onClick = {
-                            if (e.isDirectory) nav.navigate(Routes.folder(e.path))
+                            if (selection.isNotEmpty()) {
+                                selection = if (e.path in selection) selection - e.path
+                                else selection + e.path
+                            } else if (e.isDirectory) nav.navigate(Routes.folder(e.path))
                             else nav.navigate(Routes.preview(e.path))
                         },
-                        onLongClick = {},
+                        onLongClick = {
+                            selection = if (e.path in selection) selection - e.path
+                            else selection + e.path
+                        },
                     )
                 }
                 item { Spacer(Modifier.height(96.dp)) }
             }
         }
+    }
+
+    trashConfirm?.let { paths ->
+        ConfirmDialog(
+            "Move to trash?", "${paths.size} item(s) will be moved to trash.",
+            "Move to trash",
+            onConfirm = {
+                appVm.opTrash(paths)
+                vm.dropRecent(paths)
+                selection = emptySet()
+                trashConfirm = null
+            },
+            onDismiss = { trashConfirm = null },
+        )
     }
 }

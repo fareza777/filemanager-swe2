@@ -7,6 +7,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.filezen.files.data.prefs.ThemeAccent
 import com.filezen.files.data.prefs.ThemeMode
 
 // Deep teal + warm amber — calm premium file-manager palette.
@@ -68,6 +69,25 @@ private val DarkColors = darkColorScheme(
     errorContainer = Color(0xFF93000A),
 )
 
+// Accent variants — (light primary, light primaryContainer, dark primary, dark primaryContainer)
+private data class AccentColors(
+    val lp: Long, val lpc: Long, val dp: Long, val dpc: Long,
+    val ltert: Long, val dtert: Long,
+)
+
+private val Accents = mapOf(
+    ThemeAccent.TEAL to AccentColors(
+        0xFF006B5D, 0xFF9DF2DC, 0xFF81D5C0, 0xFF005144, 0xFF7A5B13, 0xFFEFC36D),
+    ThemeAccent.SUNSET to AccentColors(
+        0xFF9A4520, 0xFFFFDBCE, 0xFFFFB59B, 0xFF772F0D, 0xFF00554A, 0xFF6FDBBD),
+    ThemeAccent.VIOLET to AccentColors(
+        0xFF6750A4, 0xFFEADDFF, 0xFFD0BCFF, 0xFF4F378B, 0xFF9A4520, 0xFFFFB59B),
+    ThemeAccent.OCEAN to AccentColors(
+        0xFF0061A4, 0xFFD1E4FF, 0xFF9ECAFF, 0xFF00497D, 0xFF7A5B13, 0xFFEFC36D),
+    ThemeAccent.ROSE to AccentColors(
+        0xFF9C4055, 0xFFFFD9E0, 0xFFFFB1C0, 0xFF7D293A, 0xFF00554A, 0xFF6FDBBD),
+)
+
 private val ZenShapes = Shapes(
     extraSmall = RoundedCornerShape(8.dp),
     small = RoundedCornerShape(12.dp),
@@ -77,15 +97,27 @@ private val ZenShapes = Shapes(
 )
 
 @Composable
-fun FileZenTheme(mode: ThemeMode = ThemeMode.SYSTEM, content: @Composable () -> Unit) {
+fun FileZenTheme(
+    mode: ThemeMode = ThemeMode.SYSTEM,
+    accent: ThemeAccent = ThemeAccent.TEAL,
+    content: @Composable () -> Unit,
+) {
     val dark = when (mode) {
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
         ThemeMode.LIGHT -> false
         ThemeMode.DARK -> true
     }
-    val colors = if (Build.VERSION.SDK_INT >= 31) {
+    val colors = if (accent == ThemeAccent.DYNAMIC && Build.VERSION.SDK_INT >= 31) {
         val ctx = androidx.compose.ui.platform.LocalContext.current
         if (dark) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx)
-    } else if (dark) DarkColors else LightColors
+    } else {
+        val a = Accents[accent] ?: Accents.getValue(ThemeAccent.TEAL)
+        val base = if (dark) DarkColors else LightColors
+        base.copy(
+            primary = Color(if (dark) a.dp else a.lp),
+            primaryContainer = Color(if (dark) a.dpc else a.lpc),
+            tertiary = Color(if (dark) a.dtert else a.ltert),
+        )
+    }
     MaterialTheme(colorScheme = colors, shapes = ZenShapes, content = content)
 }

@@ -3,6 +3,7 @@ package com.filezen.files.ui.home
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -22,6 +23,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.text.font.FontWeight
@@ -32,6 +34,7 @@ import androidx.navigation.NavController
 import com.filezen.files.Routes
 import com.filezen.files.ads.ZenBanner
 import com.filezen.files.core.model.*
+import com.filezen.files.core.scan.StorageUsage
 import com.filezen.files.ui.AppViewModel
 import com.filezen.files.ui.HomeViewModel
 import com.filezen.files.ui.common.SectionHeader
@@ -50,18 +53,37 @@ fun HomeScreen(nav: NavController, appVm: AppViewModel, vm: HomeViewModel = view
 
     LaunchedEffect(Unit) { vm.refresh() }
 
-    // One-shot entrance: sections fade + rise in together.
+    // Staggered entrance: each section fades + rises in turn.
     var entered by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { entered = true }
-    val enter = fadeIn(tween(350)) + slideInVertically(tween(350)) { it / 12 }
+    fun enterIn(delay: Int) =
+        fadeIn(tween(400, delayMillis = delay)) +
+            slideInVertically(tween(400, delayMillis = delay)) { it / 8 }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
-                    Text("FileZen", style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = MaterialTheme.colorScheme.primary)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            Modifier.size(30.dp)
+                                .clip(RoundedCornerShape(9.dp))
+                                .background(
+                                    androidx.compose.ui.graphics.Brush.linearGradient(
+                                        listOf(MaterialTheme.colorScheme.primary,
+                                            MaterialTheme.colorScheme.tertiary)
+                                    )
+                                ),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(Icons.Rounded.Bolt, null, tint = Color.White,
+                                modifier = Modifier.size(18.dp))
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        Text("FileZen", style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.primary)
+                    }
                 },
                 actions = {
                     IconButton(onClick = { nav.navigate(Routes.SETTINGS) }) {
@@ -77,7 +99,7 @@ fun HomeScreen(nav: NavController, appVm: AppViewModel, vm: HomeViewModel = view
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()),
         ) {
             // Search bar
-            AnimatedVisibility(entered, enter = enter) {
+            AnimatedVisibility(entered, enter = enterIn(0)) {
             Card(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
                     .clickable { nav.navigate(Routes.SEARCH) },
@@ -96,9 +118,18 @@ fun HomeScreen(nav: NavController, appVm: AppViewModel, vm: HomeViewModel = view
             }
             }
 
+            // Storage ring — hero gauge, animated fill + count-up
+            usage?.let { u ->
+                Spacer(Modifier.height(14.dp))
+                AnimatedVisibility(entered, enter = enterIn(80)) {
+                StorageRingCard(u) { nav.navigate(Routes.STORAGE) }
+                }
+            }
+
             // Inbox nudge — hero card with brand gradient
             if (untidy > 0) {
                 Spacer(Modifier.height(16.dp))
+                AnimatedVisibility(entered, enter = enterIn(160)) {
                 Card(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
                         .clickable { nav.navigate(Routes.INBOX) },
@@ -141,9 +172,12 @@ fun HomeScreen(nav: NavController, appVm: AppViewModel, vm: HomeViewModel = view
                         Icon(Icons.Rounded.ChevronRight, null, tint = Color.White)
                     }
                 }
+                }
             }
 
             // Recent files
+            AnimatedVisibility(entered, enter = enterIn(240)) {
+            Column {
             SectionHeader("Recent") {
                 TextButton(onClick = { nav.navigate(Routes.RECENT) }) { Text("See all") }
             }
@@ -172,8 +206,12 @@ fun HomeScreen(nav: NavController, appVm: AppViewModel, vm: HomeViewModel = view
                     Spacer(Modifier.width(8.dp))
                 }
             }
+            }
+            }
 
             // Favourites
+            AnimatedVisibility(entered, enter = enterIn(320)) {
+            Column {
             SectionHeader("Favourites") {
                 TextButton(onClick = { nav.navigate(Routes.BROWSE) }) { Text("Browse") }
             }
@@ -226,7 +264,12 @@ fun HomeScreen(nav: NavController, appVm: AppViewModel, vm: HomeViewModel = view
                 }
             }
 
+            }
+            }
+
             // Last location
+            AnimatedVisibility(entered, enter = enterIn(400)) {
+            Column {
             lastPath?.let { p ->
                 if (p.isNotBlank() && File(p).exists()) {
                     SectionHeader("Jump back in")
@@ -256,53 +299,90 @@ fun HomeScreen(nav: NavController, appVm: AppViewModel, vm: HomeViewModel = view
                 }
             }
 
-            // Storage summary mini-card — bar animates to its fullness
-            usage?.let { u ->
-                val fraction = (u.used.toFloat() / u.total.coerceAtLeast(1)).coerceIn(0f, 1f)
-                val animated by animateFloatAsState(
-                    fraction,
-                    spring(
-                        dampingRatio = Spring.DampingRatioMediumBouncy,
-                        stiffness = Spring.StiffnessLow,
-                    ),
-                    label = "storage",
-                )
-                SectionHeader("Storage")
-                Card(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
-                        .clickable { nav.navigate(Routes.STORAGE) },
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-                ) {
-                    Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(58.dp)) {
-                            CircularProgressIndicator(
-                                progress = { animated },
-                                modifier = Modifier.size(58.dp),
-                                strokeWidth = 6.dp,
-                                trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                            )
-                            Text("${(fraction * 100).toInt()}%",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold)
-                        }
-                        Spacer(Modifier.width(16.dp))
-                        Column {
-                            Text("${formatSize(u.used)} of ${formatSize(u.total)} used",
-                                fontWeight = FontWeight.SemiBold,
-                                style = MaterialTheme.typography.titleMedium)
-                            Text("Tap for categories, large files & trash",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                }
+            }
             }
 
             Spacer(Modifier.height(16.dp))
             if (!adFree) ZenBanner(Modifier.padding(horizontal = 16.dp))
             Spacer(Modifier.height(24.dp))
+        }
+    }
+}
+
+/** Storage gauge — animated gradient ring with count-up percent, soft gradient card. */
+@Composable
+private fun StorageRingCard(u: StorageUsage, onClick: () -> Unit) {
+    val fraction = (u.used.toFloat() / u.total.coerceAtLeast(1)).coerceIn(0f, 1f)
+    val ring by animateFloatAsState(
+        fraction,
+        spring(dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow),
+        label = "ring",
+    )
+    val pct by animateIntAsState(
+        (fraction * 100).toInt(), tween(1000), label = "pct")
+
+    val primary = MaterialTheme.colorScheme.primary
+    val tertiary = MaterialTheme.colorScheme.tertiary
+    val track = MaterialTheme.colorScheme.surfaceVariant
+
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).clickable(onClick = onClick),
+        shape = RoundedCornerShape(24.dp),
+    ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .background(
+                    androidx.compose.ui.graphics.Brush.linearGradient(
+                        listOf(
+                            primary.copy(alpha = 0.16f).compositeOver(
+                                MaterialTheme.colorScheme.surfaceContainerLow),
+                            tertiary.copy(alpha = 0.14f).compositeOver(
+                                MaterialTheme.colorScheme.surfaceContainerLow),
+                        )
+                    )
+                )
+                .padding(20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(contentAlignment = Alignment.Center, modifier = Modifier.size(84.dp)) {
+                androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+                    val stroke = 9.dp.toPx()
+                    drawArc(
+                        color = track, startAngle = 0f, sweepAngle = 360f, useCenter = false,
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(
+                            stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round),
+                    )
+                    drawArc(
+                        brush = androidx.compose.ui.graphics.Brush.sweepGradient(
+                            listOf(primary, tertiary, primary)),
+                        startAngle = -90f, sweepAngle = 360f * ring, useCenter = false,
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(
+                            stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round),
+                    )
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("$pct%", style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold, color = primary)
+                    Text("used", style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            Spacer(Modifier.width(18.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Storage", style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(2.dp))
+                Text("${formatSize(u.used)} of ${formatSize(u.total)}",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold)
+                Text("${formatSize(u.free)} free — tap for categories, large files & trash",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Icon(Icons.Rounded.ChevronRight, null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
