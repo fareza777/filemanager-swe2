@@ -43,6 +43,7 @@ object Routes {
     const val TRASH = "trash"
     const val RULES = "rules"
     const val HISTORY = "history"
+    const val RECENT = "recent"
 
     fun folder(path: String) = "folder/${Uri.encode(path)}"
     fun preview(path: String) = "preview/${Uri.encode(path)}"
@@ -88,12 +89,14 @@ fun FileZenApp_(appVm: AppViewModel) {
 
     // On a bottom-nav tab, Back returns to Home instead of exiting the app.
     androidx.activity.compose.BackHandler(
-        enabled = currentRoute in setOf(Routes.INBOX, Routes.BROWSE, Routes.STORAGE),
+        enabled = currentRoute == null ||
+            currentRoute in setOf(Routes.INBOX, Routes.BROWSE, Routes.STORAGE),
     ) {
-        nav.navigate(Routes.HOME) {
-            popUpTo(Routes.HOME) { saveState = true }
-            launchSingleTop = true
-            restoreState = true
+        if (!nav.popBackStack(Routes.HOME, inclusive = false)) {
+            nav.navigate(Routes.HOME) {
+                popUpTo(0) { inclusive = false }
+                launchSingleTop = true
+            }
         }
     }
 
@@ -177,6 +180,7 @@ fun FileZenApp_(appVm: AppViewModel) {
             composable(Routes.TRASH) { TrashScreen(nav, appVm) }
             composable(Routes.RULES) { SortRulesScreen(nav, appVm) }
             composable(Routes.HISTORY) { HistoryScreen(nav) }
+            composable(Routes.RECENT) { RecentScreen(nav) }
         }
     }
 }

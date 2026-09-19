@@ -50,17 +50,24 @@ fun SettingsScreen(nav: NavController, appVm: AppViewModel, inboxVm: InboxViewMo
         Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())) {
 
             Text("Appearance", Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-                style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-            Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                Column(Modifier.padding(16.dp)) {
-                    Text("Theme", fontWeight = FontWeight.Medium)
-                    Spacer(Modifier.height(8.dp))
+                style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp)) {
+                Column(Modifier.padding(18.dp)) {
+                    Text("Theme", fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(10.dp))
                     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                        val themeIcons = listOf(
+                            Icons.Rounded.SettingsBrightness,
+                            Icons.Rounded.LightMode,
+                            Icons.Rounded.DarkMode,
+                        )
                         ThemeMode.values().forEachIndexed { i, t ->
                             SegmentedButton(
                                 selected = theme == t,
                                 onClick = { scope.launch { c.settings.setTheme(t) } },
                                 shape = SegmentedButtonDefaults.itemShape(i, ThemeMode.values().size),
+                                icon = { Icon(themeIcons[i], null, Modifier.size(18.dp)) },
                             ) { Text(t.name.lowercase().replaceFirstChar { it.uppercase() }) }
                         }
                     }
@@ -86,7 +93,7 @@ fun SettingsScreen(nav: NavController, appVm: AppViewModel, inboxVm: InboxViewMo
             }
 
             Text("Purchases", Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-                style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                 ListItem(
                     headlineContent = { Text("Remove ads") },
@@ -105,7 +112,7 @@ fun SettingsScreen(nav: NavController, appVm: AppViewModel, inboxVm: InboxViewMo
             }
 
             Text("About", Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-                style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                 ListItem(
                     headlineContent = { Text("FileZen") },

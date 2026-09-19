@@ -1,5 +1,10 @@
 package com.filezen.files.ui.home
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -43,6 +48,11 @@ fun HomeScreen(nav: NavController, appVm: AppViewModel, vm: HomeViewModel = view
 
     LaunchedEffect(Unit) { vm.refresh() }
 
+    // One-shot entrance: sections fade + rise in together.
+    var entered by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { entered = true }
+    val enter = fadeIn(tween(350)) + slideInVertically(tween(350)) { it / 12 }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -65,6 +75,7 @@ fun HomeScreen(nav: NavController, appVm: AppViewModel, vm: HomeViewModel = view
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()),
         ) {
             // Search bar
+            AnimatedVisibility(entered, enter = enter) {
             Card(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
                     .clickable { nav.navigate(Routes.SEARCH) },
@@ -80,6 +91,7 @@ fun HomeScreen(nav: NavController, appVm: AppViewModel, vm: HomeViewModel = view
                     Spacer(Modifier.width(14.dp))
                     Text("Search files…", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+            }
             }
 
             // Inbox nudge — hero card with brand gradient
@@ -130,7 +142,9 @@ fun HomeScreen(nav: NavController, appVm: AppViewModel, vm: HomeViewModel = view
             }
 
             // Recent files
-            SectionHeader("Recent")
+            SectionHeader("Recent") {
+                TextButton(onClick = { nav.navigate(Routes.RECENT) }) { Text("See all") }
+            }
             if (recent.isEmpty()) {
                 Text("No recent files", modifier = Modifier.padding(horizontal = 16.dp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -240,24 +254,39 @@ fun HomeScreen(nav: NavController, appVm: AppViewModel, vm: HomeViewModel = view
                 }
             }
 
-            // Storage summary mini-card
+            // Storage summary mini-card — bar animates to its fullness
             usage?.let { u ->
+                val fraction = (u.used.toFloat() / u.total.coerceAtLeast(1)).coerceIn(0f, 1f)
+                val animated by animateFloatAsState(fraction, tween(900), label = "storage")
                 SectionHeader("Storage")
                 Card(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
                         .clickable { nav.navigate(Routes.STORAGE) },
+                    shape = RoundedCornerShape(20.dp),
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
                 ) {
-                    Column(Modifier.padding(18.dp)) {
-                        Text("${formatSize(u.used)} of ${formatSize(u.total)} used",
-                            fontWeight = FontWeight.SemiBold,
-                            style = MaterialTheme.typography.titleMedium)
-                        Spacer(Modifier.height(8.dp))
-                        LinearProgressIndicator(
-                            progress = { (u.used.toFloat() / u.total.coerceAtLeast(1)).coerceIn(0f, 1f) },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
+                    Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(58.dp)) {
+                            CircularProgressIndicator(
+                                progress = { animated },
+                                modifier = Modifier.size(58.dp),
+                                strokeWidth = 6.dp,
+                                trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                            )
+                            Text("${(fraction * 100).toInt()}%",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(Modifier.width(16.dp))
+                        Column {
+                            Text("${formatSize(u.used)} of ${formatSize(u.total)} used",
+                                fontWeight = FontWeight.SemiBold,
+                                style = MaterialTheme.typography.titleMedium)
+                            Text("Tap for categories, large files & trash",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
             }

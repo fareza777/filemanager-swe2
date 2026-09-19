@@ -254,17 +254,41 @@ fun BrowseScreen(
                 // Volumes + categories overview
                 LazyColumn(Modifier.fillMaxSize()) {
                     itemsIndexed(volumes) { _, v ->
-                        ListItem(
-                            headlineContent = { Text(v.name, fontWeight = FontWeight.SemiBold) },
-                            supportingContent = { Text(v.path, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                            leadingContent = {
-                                Icon(
-                                    if (v.removable) Icons.Rounded.SdCard else Icons.Rounded.PhoneAndroid,
-                                    null, tint = MaterialTheme.colorScheme.primary,
-                                )
-                            },
-                            modifier = Modifier.clickable { nav.navigate(Routes.folder(v.path)) },
-                        )
+                        Card(
+                            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp)
+                                .clickable { nav.navigate(Routes.folder(v.path)) },
+                            shape = RoundedCornerShape(18.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+                        ) {
+                            Row(
+                                Modifier.padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                    modifier = Modifier.size(48.dp),
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            if (v.removable) Icons.Rounded.SdCard else Icons.Rounded.Smartphone,
+                                            null,
+                                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        )
+                                    }
+                                }
+                                Spacer(Modifier.width(14.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(v.name, fontWeight = FontWeight.SemiBold)
+                                    Text(v.path, style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                                Icon(Icons.Rounded.ChevronRight, null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
                     }
                     item { SectionHeader("Categories") }
                     val cats = listOf(
@@ -274,9 +298,26 @@ fun BrowseScreen(
                         FileType.ARCHIVE to "Archives", FileType.TEXT to "Text",
                     )
                     itemsIndexed(cats) { _, (t, label) ->
+                        val dummy = FileEntry("", "", false, 0, 0, t)
                         ListItem(
                             headlineContent = { Text(label) },
-                            leadingContent = { Icon(iconFor(FileEntry("", "", false, 0, 0, t)), null, tint = tintFor(FileEntry("", "", false, 0, 0, t))) },
+                            leadingContent = {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = tintFor(dummy).copy(alpha = 0.16f),
+                                    modifier = Modifier.size(38.dp),
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(iconFor(dummy), null, tint = tintFor(dummy),
+                                            modifier = Modifier.size(20.dp))
+                                    }
+                                }
+                            },
+                            trailingContent = {
+                                Icon(Icons.Rounded.ChevronRight, null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp))
+                            },
                             modifier = Modifier.clickable { nav.navigate("${Routes.SEARCH}?type=${t.name}") },
                         )
                     }

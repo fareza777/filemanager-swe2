@@ -101,20 +101,32 @@ class HomeViewModel : ViewModel() {
         .map { it.size }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
+    private val _allRecent = MutableStateFlow<List<FileEntry>>(emptyList())
+    val allRecent: StateFlow<List<FileEntry>> = _allRecent
+
     init { refresh() }
+
+    private fun recentRoots(): List<File> = listOf(
+        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
+        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM),
+        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS),
+    ).filter { it.exists() }
 
     fun refresh() {
         viewModelScope.launch {
             _lastPath.value = c.settings.lastBrowsePath.first()
             _usage.value = StorageAnalyzer.usage()
-            val roots = listOf(
-                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
-                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM),
-                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS),
-            ).filter { it.exists() }
             _recent.value = withContext(Dispatchers.IO) {
-                Scanner.recent(roots, limit = 40)
+                Scanner.recent(recentRoots(), limit = 40)
+            }
+        }
+    }
+
+    fun loadAllRecent() {
+        viewModelScope.launch {
+            _allRecent.value = withContext(Dispatchers.IO) {
+                Scanner.recent(recentRoots(), limit = 500)
             }
         }
     }

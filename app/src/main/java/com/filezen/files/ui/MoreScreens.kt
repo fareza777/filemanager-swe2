@@ -16,6 +16,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import com.filezen.files.Routes
 import com.filezen.files.core.model.formatDate
 import com.filezen.files.core.model.formatSize
 import com.filezen.files.data.db.SortRule
@@ -241,6 +242,46 @@ fun HistoryScreen(nav: NavController, vm: StorageViewModel = viewModel()) {
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     )
                 }
+            }
+        }
+    }
+}
+
+/** Every recent file (up to 500) — the Home "See all" destination. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun RecentScreen(nav: NavController, vm: HomeViewModel = viewModel()) {
+    val recent by vm.allRecent.collectAsState()
+
+    LaunchedEffect(Unit) { vm.loadAllRecent() }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Recent files", fontWeight = FontWeight.Bold) },
+                navigationIcon = {
+                    IconButton(onClick = { nav.popBackStack() }) { Icon(Icons.Rounded.ArrowBack, "Back") }
+                },
+            )
+        },
+    ) { padding ->
+        if (recent.isEmpty()) {
+            EmptyState(Icons.Rounded.Schedule, "No recent files",
+                "New files from Downloads, Pictures, DCIM and Documents appear here.",
+                Modifier.padding(padding))
+        } else {
+            LazyColumn(Modifier.fillMaxSize().padding(padding)) {
+                items(recent, key = { it.path }) { e ->
+                    FileRow(
+                        e = e, selected = false,
+                        onClick = {
+                            if (e.isDirectory) nav.navigate(Routes.folder(e.path))
+                            else nav.navigate(Routes.preview(e.path))
+                        },
+                        onLongClick = {},
+                    )
+                }
+                item { Spacer(Modifier.height(96.dp)) }
             }
         }
     }
