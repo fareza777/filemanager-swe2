@@ -33,6 +33,7 @@ import com.filezen.files.ui.common.PermissionGate
 import com.filezen.files.ui.common.hasStorageAccess
 import com.filezen.files.ui.home.HomeScreen
 import com.filezen.files.ui.inbox.InboxScreen
+import com.filezen.files.ui.optimise.OptimiseScreen
 import com.filezen.files.ui.preview.PreviewScreen
 import com.filezen.files.ui.search.SearchScreen
 import com.filezen.files.ui.settings.SettingsScreen
@@ -52,6 +53,7 @@ object Routes {
     const val HISTORY = "history"
     const val RECENT = "recent"
     const val CALENDAR = "calendar"
+    const val OPTIMISE = "optimise"
     fun folder(path: String) = "folder/${Uri.encode(path)}"
     fun preview(path: String) = "preview/${Uri.encode(path)}"
 }
@@ -224,6 +226,7 @@ fun FileZenApp_(appVm: AppViewModel) {
             }
             composable(Routes.SETTINGS) { SettingsScreen(nav, appVm) }
             composable(Routes.STORAGE) { StorageScreen(nav, appVm) }
+            composable(Routes.OPTIMISE) { OptimiseScreen(nav, appVm) }
             composable(Routes.TRASH) { TrashScreen(nav, appVm) }
             composable(Routes.RULES) { SortRulesScreen(nav, appVm) }
             composable(Routes.HISTORY) { HistoryScreen(nav) }

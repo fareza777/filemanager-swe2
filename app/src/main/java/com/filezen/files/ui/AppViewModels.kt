@@ -88,6 +88,43 @@ class AppViewModel : ViewModel() {
                 else "already optimal")))
         }
     }
+    /** Batch recompress: one operation row, per-file progress. */
+    fun opCompressImages(paths: List<String>) {
+        c.ops.launch(OpKind.COMPRESS, "Compressing ${paths.size} photos", paths, null) { cb ->
+            val results = mutableListOf<ItemResult>()
+            paths.forEachIndexed { i, p ->
+                cb(OpProgress(i, paths.size, File(p).name, 0, 0))
+                try {
+                    val r = com.filezen.files.core.convert.ConvertEngine.compressImage(File(p))
+                    results += ItemResult(p, r.output.path, ItemStatus.DONE,
+                        if (r.bytesSaved > 0) "saved ${com.filezen.files.core.model.formatSize(r.bytesSaved)}"
+                        else "already optimal")
+                } catch (e: Exception) {
+                    results += ItemResult(p, null, ItemStatus.FAILED, e.message)
+                }
+            }
+            cb(OpProgress(paths.size, paths.size, "", 0, 0))
+            OpSummary(OpKind.COMPRESS, results)
+        }
+    }
+    /** Batch convert: one operation row covering all files. */
+    fun opConvertMany(paths: List<String>, target: com.filezen.files.core.convert.ConvertEngine.Target) {
+        c.ops.launch(OpKind.CONVERT, "Converting to ${target.label}", paths, null) { cb ->
+            val results = mutableListOf<ItemResult>()
+            paths.forEachIndexed { i, p ->
+                cb(OpProgress(i, paths.size, File(p).name, 0, 0))
+                try {
+                    val r = com.filezen.files.core.convert.ConvertEngine.convert(File(p), target)
+                    results += ItemResult(p, r.output.path, ItemStatus.DONE,
+                        "saved ${com.filezen.files.core.model.formatSize(r.bytesSaved)}")
+                } catch (e: Exception) {
+                    results += ItemResult(p, null, ItemStatus.FAILED, e.message)
+                }
+            }
+            cb(OpProgress(paths.size, paths.size, "", 0, 0))
+            OpSummary(OpKind.CONVERT, results)
+        }
+    }
     fun opZip(paths: List<String>, dest: File) {
         c.ops.launch(OpKind.ZIP, "Compressing", paths, dest.path) { cb ->
             val zipName = if (paths.size == 1)

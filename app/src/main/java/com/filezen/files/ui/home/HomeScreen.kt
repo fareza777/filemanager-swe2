@@ -134,7 +134,7 @@ fun HomeScreen(nav: NavController, appVm: AppViewModel, vm: HomeViewModel = view
             AnimatedVisibility(entered, enter = enterIn(140)) {
             OptimiseCard(
                 reclaimable = trashSize + dupWasted,
-                onClick = { nav.navigate(Routes.STORAGE) },
+                onClick = { nav.navigate(Routes.OPTIMISE) },
             )
             }
 
