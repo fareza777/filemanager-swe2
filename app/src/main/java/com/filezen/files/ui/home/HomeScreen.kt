@@ -1,7 +1,9 @@
 package com.filezen.files.ui.home
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
@@ -257,7 +259,14 @@ fun HomeScreen(nav: NavController, appVm: AppViewModel, vm: HomeViewModel = view
             // Storage summary mini-card — bar animates to its fullness
             usage?.let { u ->
                 val fraction = (u.used.toFloat() / u.total.coerceAtLeast(1)).coerceIn(0f, 1f)
-                val animated by animateFloatAsState(fraction, tween(900), label = "storage")
+                val animated by animateFloatAsState(
+                    fraction,
+                    spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessLow,
+                    ),
+                    label = "storage",
+                )
                 SectionHeader("Storage")
                 Card(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)

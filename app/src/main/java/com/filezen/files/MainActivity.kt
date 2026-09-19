@@ -150,6 +150,24 @@ fun FileZenApp_(appVm: AppViewModel) {
             navController = nav,
             startDestination = Routes.HOME,
             modifier = Modifier.padding(padding),
+            enterTransition = {
+                androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(220)) +
+                    androidx.compose.animation.slideInHorizontally(
+                        androidx.compose.animation.core.tween(220),
+                    ) { it / 12 }
+            },
+            exitTransition = {
+                androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(160))
+            },
+            popEnterTransition = {
+                androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(220)) +
+                    androidx.compose.animation.slideInHorizontally(
+                        androidx.compose.animation.core.tween(220),
+                    ) { -it / 12 }
+            },
+            popExitTransition = {
+                androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(160))
+            },
         ) {
             composable(Routes.HOME) { HomeScreen(nav, appVm) }
             composable(Routes.INBOX) { InboxScreen(nav, appVm) }
