@@ -33,6 +33,7 @@ class SettingsStore(private val ctx: Context) {
         val AMOLED = booleanPreferencesKey("amoled")
         val FOLDER_SIZES = booleanPreferencesKey("folder_sizes")
         val FOLDER_COLORS = stringPreferencesKey("folder_colors")
+        val ONBOARDED = booleanPreferencesKey("onboarded")
         val RECENT_QUERY = stringPreferencesKey("recent_queries")
         val SCROLL_PREFIX = "scroll_" // + sanitized path -> "index,offset"
     }
@@ -56,6 +57,7 @@ class SettingsStore(private val ctx: Context) {
     val adFree: Flow<Boolean> = ctx.zenPrefs.data.map { it[K.AD_FREE] ?: false }
     val showHidden: Flow<Boolean> = ctx.zenPrefs.data.map { it[K.SHOW_HIDDEN] ?: false }
     val amoled: Flow<Boolean> = ctx.zenPrefs.data.map { it[K.AMOLED] ?: false }
+    val onboarded: Flow<Boolean> = ctx.zenPrefs.data.map { it[K.ONBOARDED] ?: false }
     val folderSizes: Flow<Boolean> = ctx.zenPrefs.data.map { it[K.FOLDER_SIZES] ?: false }
     /** path -> ARGB color int for folder tags. */
     val folderColors: Flow<Map<String, Int>> = ctx.zenPrefs.data.map { p ->
@@ -82,6 +84,7 @@ class SettingsStore(private val ctx: Context) {
     suspend fun setSafRoots(v: Set<String>) = ctx.zenPrefs.edit { it[K.SAF_ROOTS] = v }
     suspend fun setAdFree(v: Boolean) = ctx.zenPrefs.edit { it[K.AD_FREE] = v }
     suspend fun setAmoled(v: Boolean) = ctx.zenPrefs.edit { it[K.AMOLED] = v }
+    suspend fun setOnboarded(v: Boolean) = ctx.zenPrefs.edit { it[K.ONBOARDED] = v }
     suspend fun setFolderSizes(v: Boolean) = ctx.zenPrefs.edit { it[K.FOLDER_SIZES] = v }
     suspend fun setFolderColor(path: String, argb: Int?) = ctx.zenPrefs.edit { p ->
         val cur = (p[K.FOLDER_COLORS] ?: "").split("\n").filter { line ->

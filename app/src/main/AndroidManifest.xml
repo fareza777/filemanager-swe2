@@ -26,7 +26,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:allowBackup="true"
         android:supportsRtl="true"
-        android:theme="@style/Theme.FileZen"
+        android:theme="@style/Theme.FileZen.Splash"
         tools:targetApi="35">
 
         <meta-data

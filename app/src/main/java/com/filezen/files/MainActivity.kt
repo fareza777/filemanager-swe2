@@ -1,5 +1,6 @@
 @file:OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class, androidx.compose.material3.ExperimentalMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 package com.filezen.files
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -56,6 +57,7 @@ object Routes {
 }
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
@@ -84,9 +86,17 @@ fun FileZenApp_(appVm: AppViewModel) {
         Surface(Modifier.fillMaxSize()) { PermissionGate() }
         return
     }
+    val onboarded by FileZenApp.c.settings.onboarded.collectAsState(initial = null)
+    if (onboarded == false) {
+        com.filezen.files.ui.onboarding.OnboardingScreen { }
+        return
+    }
+    var splash by remember { mutableStateOf(true) }
+    LaunchedEffect(Unit) { kotlinx.coroutines.delay(900); splash = false }
     val nav = rememberNavController()
     val runningOp by appVm.runningOp.collectAsState()
     val snack = remember { SnackbarHostState() }
+    // Box lets the animated splash overlay sit on top of the whole UI
     val lastSummary by appVm.lastSummary.collectAsState()
     val backStack by nav.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route
@@ -119,6 +129,7 @@ fun FileZenApp_(appVm: AppViewModel) {
             appVm.dismissSummary()
         }
     }
+    Box(Modifier.fillMaxSize()) {
     Scaffold(
         snackbarHost = { SnackbarHost(snack) },
         bottomBar = {
@@ -222,6 +233,11 @@ fun FileZenApp_(appVm: AppViewModel) {
         }
         }
         }
+    }
+    androidx.compose.animation.AnimatedVisibility(
+        splash, exit = androidx.compose.animation.fadeOut(
+            androidx.compose.animation.core.tween(400)),
+    ) { com.filezen.files.ui.onboarding.SplashOverlay() }
     }
 }
 /**
