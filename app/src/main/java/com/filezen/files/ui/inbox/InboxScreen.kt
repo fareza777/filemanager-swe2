@@ -32,6 +32,7 @@ fun InboxScreen(nav: NavController, appVm: AppViewModel, vm: InboxViewModel = vi
     val scanning by vm.scanning.collectAsState()
     val favorites by appVm.favorites.collectAsState()
     val roots by vm.roots.collectAsState()
+    val rules by vm.rules.collectAsState()
 
     var tab by remember { mutableStateOf(0) }
     var showTidyFor by remember { mutableStateOf<List<String>?>(null) }
@@ -39,8 +40,11 @@ fun InboxScreen(nav: NavController, appVm: AppViewModel, vm: InboxViewModel = vi
     var showRoots by remember { mutableStateOf(false) }
     var addRootPath by remember { mutableStateOf(false) }
     var trashConfirm by remember { mutableStateOf<List<String>?>(null) }
+    var autoFor by remember { mutableStateOf<List<String>?>(null) }
 
     val shown = if (tab == 0) untidy else tidy
+
+    androidx.activity.compose.BackHandler(enabled = selection.isNotEmpty()) { vm.clearSelection() }
 
     Scaffold(
         topBar = {
@@ -53,6 +57,9 @@ fun InboxScreen(nav: NavController, appVm: AppViewModel, vm: InboxViewModel = vi
                     actions = {
                         IconButton(onClick = { showTidyFor = selection.toList() }) {
                             Icon(Icons.Rounded.DriveFileMove, "Tidy up")
+                        }
+                        IconButton(onClick = { autoFor = selection.toList() }) {
+                            Icon(Icons.Rounded.AutoAwesome, "Auto-tidy")
                         }
                         IconButton(onClick = { vm.markTidy(selection.toList(), true) }) {
                             Icon(Icons.Rounded.DoneAll, "Mark tidy")
@@ -69,6 +76,11 @@ fun InboxScreen(nav: NavController, appVm: AppViewModel, vm: InboxViewModel = vi
                 TopAppBar(
                     title = { Text("Inbox", fontWeight = FontWeight.Bold) },
                     actions = {
+                        if (tab == 0 && untidy.isNotEmpty()) {
+                            IconButton(onClick = { autoFor = untidy.map { it.path } }) {
+                                Icon(Icons.Rounded.AutoAwesome, "Auto-tidy all")
+                            }
+                        }
                         IconButton(onClick = { showRoots = true }) {
                             Icon(Icons.Rounded.Source, "Watched folders")
                         }
@@ -163,7 +175,11 @@ fun InboxScreen(nav: NavController, appVm: AppViewModel, vm: InboxViewModel = vi
             }
             OutlinedButton(
                 onClick = {
-                    nav.navigate(Routes.BROWSE)
+                    nav.navigate(Routes.BROWSE) {
+                        popUpTo(Routes.HOME) { saveState = true }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
                     showTidyFor = null
                 },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
@@ -220,6 +236,64 @@ fun InboxScreen(nav: NavController, appVm: AppViewModel, vm: InboxViewModel = vi
             onConfirm = { appVm.opTrash(paths); trashConfirm = null; vm.clearSelection() },
             onDismiss = { trashConfirm = null },
         )
+    }
+
+    // Auto-tidy: preview resolved destinations (sort rules first, then type defaults)
+    autoFor?.let { paths ->
+        val (plan, skipped) = remember(paths, rules) { vm.autoTidyPlan(paths) }
+        ModalBottomSheet(onDismissRequest = { autoFor = null }) {
+            Row(
+                Modifier.padding(horizontal = 20.dp).fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Rounded.AutoAwesome, null, tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(10.dp))
+                Text("Auto-tidy ${paths.size} file(s)", style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold)
+            }
+            if (plan.isEmpty()) {
+                Text(
+                    "Nothing matched a sort rule or a standard folder. Add a rule in Storage → Sort rules.",
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                LazyColumn(Modifier.weight(1f, fill = false)) {
+                    items(plan) { item ->
+                        ListItem(
+                            headlineContent = {
+                                Text(item.name, maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                            },
+                            supportingContent = { Text(item.via, style = MaterialTheme.typography.labelSmall) },
+                            trailingContent = {
+                                Text("→ ${item.dest.substringAfterLast('/')}",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary)
+                            },
+                            leadingContent = {
+                                Icon(Icons.Rounded.Folder, null, Modifier.size(20.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            },
+                        )
+                    }
+                }
+                if (skipped.isNotEmpty()) {
+                    Text(
+                        "${skipped.size} file(s) have no rule or standard folder — they'll stay where they are.",
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Button(
+                    onClick = { vm.autoTidy(plan); autoFor = null },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
+                ) { Text("Tidy ${plan.size} files") }
+            }
+            Spacer(Modifier.height(24.dp))
+        }
     }
 }
 

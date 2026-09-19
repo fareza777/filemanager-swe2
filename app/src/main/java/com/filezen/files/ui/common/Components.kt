@@ -53,14 +53,17 @@ fun tintFor(e: FileEntry): Color = when (e.type) {
 
 @Composable
 fun ThumbBox(e: FileEntry, size: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(if (e.isDirectory) 8.dp else 10.dp)
+    val shape = RoundedCornerShape(if (e.isDirectory) 12.dp else 14.dp)
     Box(
         modifier = modifier
             .size(size)
             .clip(shape)
-            .background(tintFor(e).copy(alpha = 0.15f)),
+            .background(tintFor(e).copy(alpha = 0.16f)),
         contentAlignment = Alignment.Center,
     ) {
+        // Icon doubles as the placeholder while an image thumbnail loads.
+        Icon(iconFor(e), contentDescription = null, tint = tintFor(e),
+            modifier = Modifier.size(size * 0.52f))
         if (e.type == FileType.IMAGE || e.type == FileType.VIDEO) {
             AsyncImage(
                 model = ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
@@ -72,9 +75,6 @@ fun ThumbBox(e: FileEntry, size: androidx.compose.ui.unit.Dp, modifier: Modifier
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.size(size).clip(shape),
             )
-        } else {
-            Icon(iconFor(e), contentDescription = null, tint = tintFor(e),
-                modifier = Modifier.size(size * 0.55f))
         }
     }
 }
@@ -89,18 +89,18 @@ fun FileRow(
     modifier: Modifier = Modifier,
     trailing: (@Composable () -> Unit)? = null,
 ) {
-    val bg = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+    val bg = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
         else Color.Transparent
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(14.dp))
             .background(bg)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = 10.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ThumbBox(e, 44.dp)
+        ThumbBox(e, 46.dp)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(e.name, style = MaterialTheme.typography.bodyLarge,
@@ -122,7 +122,7 @@ fun FileRow(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun FileCard(e: FileEntry, selected: Boolean, onClick: () -> Unit, onLongClick: () -> Unit) {
-    val bg = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+    val bg = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
         else MaterialTheme.colorScheme.surfaceContainerLow
     Card(
         modifier = Modifier
@@ -130,14 +130,14 @@ fun FileCard(e: FileEntry, selected: Boolean, onClick: () -> Unit, onLongClick: 
             .aspectRatio(0.85f)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
         colors = CardDefaults.cardColors(containerColor = bg),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(20.dp),
     ) {
         Column(
             modifier = Modifier.fillMaxSize().padding(10.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                ThumbBox(e, 64.dp)
+                ThumbBox(e, 68.dp)
             }
             Text(e.name, style = MaterialTheme.typography.bodySmall,
                 maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -156,35 +156,69 @@ fun EmptyState(icon: ImageVector, title: String, subtitle: String, modifier: Mod
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Icon(icon, null, modifier = Modifier.size(64.dp),
-            tint = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
-        Spacer(Modifier.height(16.dp))
-        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        Spacer(Modifier.height(6.dp))
+        Surface(
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            modifier = Modifier.size(96.dp),
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(icon, null, modifier = Modifier.size(44.dp),
+                    tint = MaterialTheme.colorScheme.outline)
+            }
+        }
+        Spacer(Modifier.height(20.dp))
+        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(8.dp))
         Text(subtitle, style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center)
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun Breadcrumb(path: String, onNavigate: (String) -> Unit) {
     val segs = path.split("/").filter { it.isNotEmpty() }
     androidx.compose.foundation.lazy.LazyRow(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         item {
-            TextButton(onClick = { onNavigate("/") }) {
-                Text("/", fontWeight = FontWeight.Bold)
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = if (segs.isEmpty()) MaterialTheme.colorScheme.primaryContainer
+                    else MaterialTheme.colorScheme.surfaceContainerHigh,
+            ) {
+                Text("/", fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .combinedClickable(onClick = { onNavigate("/") })
+                        .padding(horizontal = 10.dp, vertical = 6.dp))
             }
         }
         var acc = ""
         items(segs.size) { i ->
             acc += "/" + segs[i]
             val target = acc
-            Text("›", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            TextButton(onClick = { onNavigate(target) }) {
-                Text(segs[i], maxLines = 1, overflow = TextOverflow.Ellipsis)
+            val isLast = i == segs.size - 1
+            Text("›", color = MaterialTheme.colorScheme.outline,
+                style = MaterialTheme.typography.labelLarge)
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = if (isLast) MaterialTheme.colorScheme.primaryContainer
+                    else Color.Transparent,
+            ) {
+                Text(
+                    segs[i], maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    fontWeight = if (isLast) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (isLast) MaterialTheme.colorScheme.onPrimaryContainer
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .combinedClickable(onClick = { onNavigate(target) })
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                )
             }
         }
     }
@@ -197,8 +231,7 @@ fun SectionHeader(text: String, action: (@Composable () -> Unit)? = null) {
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(text, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.primary)
+        Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         action?.invoke()
     }
 }
@@ -230,8 +263,9 @@ fun OpProgressCard(current: com.filezen.files.core.fileops.RunningOp?, onCancel:
     Card(
         modifier = Modifier.fillMaxWidth().padding(8.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+        shape = RoundedCornerShape(20.dp),
     ) {
-        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(current.label, style = MaterialTheme.typography.labelLarge)
                 LinearProgressIndicator(

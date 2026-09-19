@@ -292,6 +292,64 @@ class InboxViewModel : ViewModel() {
     fun addRoot(path: String) = viewModelScope.launch { c.inbox.setRoots(roots.value + path) }
     fun removeRoot(path: String) = viewModelScope.launch { c.inbox.setRoots(roots.value - path) }
     fun resetRoots() = viewModelScope.launch { c.inbox.setRoots(emptySet()) }
+
+    // ---- Auto-tidy: rules first, then sensible type defaults ----
+
+    val rules = c.db.sortRules().all()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    data class TidyPlanItem(val path: String, val name: String, val dest: String, val via: String)
+
+    fun autoTidyPlan(paths: List<String>): Pair<List<TidyPlanItem>, List<String>> {
+        val activeRules = rules.value.filter { it.enabled }
+        val planned = mutableListOf<TidyPlanItem>()
+        val skipped = mutableListOf<String>()
+        paths.forEach { p ->
+            val f = File(p)
+            val e = FileEntry.from(f)
+            val rule = activeRules.firstOrNull { SortRuleEngine.matches(it, e) }
+            val dest = rule?.targetPath ?: defaultTidyDest(e.type)
+            if (dest == null) skipped += p
+            else planned += TidyPlanItem(
+                path = p, name = f.name, dest = dest,
+                via = if (rule != null) "Rule: ${SortRuleEngine.describe(rule)}" else "By type",
+            )
+        }
+        return planned to skipped
+    }
+
+    /** Folders that make sense as automatic destinations by file type. */
+    private fun defaultTidyDest(t: FileType): String? {
+        val dir = when (t) {
+            FileType.IMAGE -> Environment.DIRECTORY_PICTURES
+            FileType.VIDEO -> Environment.DIRECTORY_MOVIES
+            FileType.AUDIO -> Environment.DIRECTORY_MUSIC
+            FileType.DOCUMENT, FileType.PDF, FileType.TEXT -> Environment.DIRECTORY_DOCUMENTS
+            else -> return null // archives/apps/unknown stay put unless a rule matches
+        }
+        return Environment.getExternalStoragePublicDirectory(dir).absolutePath
+    }
+
+    /** Auto-tidy: move each planned file to its resolved destination, mark tidy. */
+    fun autoTidy(plan: List<TidyPlanItem>) {
+        viewModelScope.launch {
+            val allResults = mutableListOf<ItemResult>()
+            plan.groupBy { it.dest }.forEach { (dest, items) ->
+                val d = File(dest)
+                if (!d.exists()) d.mkdirs()
+                val summary = c.ops.runSync(OpKind.TIDY, "Auto-tidying", items.map { it.path }, dest) { cb ->
+                    c.fileEngine.move(items.map { File(it.path) }, d, ConflictPolicy.KEEP_BOTH, cb)
+                }
+                allResults += summary.results
+                summary.results.filter { it.status == ItemStatus.DONE && it.target != null }.forEach { r ->
+                    c.inbox.fileMoved(r.source, File(r.target!!))
+                    _selection.value -= r.source
+                }
+            }
+            // report a single combined snackbar instead of the last group's
+            c.ops.postSummary(OpSummary(OpKind.TIDY, allResults))
+        }
+    }
 }
 
 class StorageViewModel : ViewModel() {

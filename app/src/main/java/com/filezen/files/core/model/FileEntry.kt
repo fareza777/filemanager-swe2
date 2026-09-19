@@ -67,8 +67,11 @@ fun formatSize(bytes: Long): String {
     return "%.1f %s".format(v, units[i])
 }
 
+private val dateFormat = object : ThreadLocal<java.text.SimpleDateFormat>() {
+    override fun initialValue() = java.text.SimpleDateFormat("d MMM yyyy, HH:mm", Locale.getDefault())
+}
+
 fun formatDate(millis: Long): String {
     if (millis <= 0) return "—"
-    val sdf = java.text.SimpleDateFormat("d MMM yyyy, HH:mm", Locale.getDefault())
-    return sdf.format(java.util.Date(millis))
+    return dateFormat.get()!!.format(java.util.Date(millis))
 }

@@ -25,10 +25,14 @@ import com.filezen.files.ui.AppViewModel
 import com.filezen.files.ui.BrowseViewModel
 import com.filezen.files.ui.common.*
 import com.filezen.files.ops.Intents
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.io.File
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, FlowPreview::class)
 @Composable
 fun BrowseScreen(
     nav: NavController,
@@ -61,6 +65,31 @@ fun BrowseScreen(
 
     LaunchedEffect(fixedPath) { fixedPath?.let { vm.navigate(it) } }
     val isRootPicker = fixedPath == null
+
+    androidx.activity.compose.BackHandler(enabled = selection.isNotEmpty()) { vm.clearSelection() }
+
+    // Per-folder scroll memory: restore once when the path changes,
+    // save the live position (debounced so it doesn't thrash DataStore).
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
+    LaunchedEffect(path) {
+        val s = vm.scrollFor(path).first()
+        if (s.index > 0 || s.offset > 0) {
+            listState.scrollToItem(s.index, s.offset)
+            gridState.scrollToItem(s.index, s.offset)
+        }
+    }
+    LaunchedEffect(path, viewMode) {
+        if (viewMode == ViewMode.LIST) {
+            snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
+                .distinctUntilChanged().debounce(250)
+                .collect { (i, o) -> vm.saveScroll(i, o) }
+        } else {
+            snapshotFlow { gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset }
+                .distinctUntilChanged().debounce(250)
+                .collect { (i, o) -> vm.saveScroll(i, o) }
+        }
+    }
 
     fun doPaste(dest: String, policy: ConflictPolicy) {
         val cb = clipboard ?: return
@@ -255,7 +284,7 @@ fun BrowseScreen(
             } else if (entries.isEmpty() && !loading) {
                 EmptyState(Icons.Rounded.FolderOpen, "Empty folder", "Nothing to see here yet.")
             } else if (viewMode == ViewMode.LIST) {
-                LazyColumn(Modifier.fillMaxSize()) {
+                LazyColumn(Modifier.fillMaxSize(), state = listState) {
                     itemsIndexed(entries, key = { _, e -> e.path }) { _, e ->
                         FileRow(
                             e = e,
@@ -285,6 +314,7 @@ fun BrowseScreen(
                 }
             } else {
                 LazyVerticalGrid(
+                    state = gridState,
                     columns = GridCells.Adaptive(110.dp),
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(12.dp),
@@ -385,7 +415,13 @@ fun BrowseScreen(
                 appVm.basketClear()
                 showDestPicker = false
             },
-            onBrowse = { nav.navigate(Routes.BROWSE) },
+            onBrowse = {
+                nav.navigate(Routes.BROWSE) {
+                    popUpTo(Routes.HOME) { saveState = true }
+                    launchSingleTop = true
+                    restoreState = true
+                }
+            },
             onDismiss = { showDestPicker = false },
         )
     }

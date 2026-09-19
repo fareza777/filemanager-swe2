@@ -45,6 +45,7 @@ fun SearchScreen(
     var minSizeMb by remember { mutableStateOf("") }
     var scope by remember { mutableStateOf("everywhere") } // everywhere / downloads / current
     var selection by remember { mutableStateOf(setOf<String>()) }
+    androidx.activity.compose.BackHandler(enabled = selection.isNotEmpty()) { selection = emptySet() }
     var deleteConfirm by remember { mutableStateOf(false) }
     var showSortPick by remember { mutableStateOf(false) }
 

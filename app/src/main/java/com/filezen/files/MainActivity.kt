@@ -83,6 +83,19 @@ fun FileZenApp_(appVm: AppViewModel) {
     val runningOp by appVm.runningOp.collectAsState()
     val snack = remember { SnackbarHostState() }
     val lastSummary by appVm.lastSummary.collectAsState()
+    val backStack by nav.currentBackStackEntryAsState()
+    val currentRoute = backStack?.destination?.route
+
+    // On a bottom-nav tab, Back returns to Home instead of exiting the app.
+    androidx.activity.compose.BackHandler(
+        enabled = currentRoute in setOf(Routes.INBOX, Routes.BROWSE, Routes.STORAGE),
+    ) {
+        nav.navigate(Routes.HOME) {
+            popUpTo(Routes.HOME) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
 
     LaunchedEffect(lastSummary) {
         lastSummary?.let { s ->
@@ -102,9 +115,10 @@ fun FileZenApp_(appVm: AppViewModel) {
         bottomBar = {
             Column {
                 OpProgressCard(runningOp) { appVm.cancelOp() }
-                NavigationBar {
-                    val backStack by nav.currentBackStackEntryAsState()
-                    val route = backStack?.destination?.route
+                NavigationBar(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                ) {
+                    val route = currentRoute
                     val items = listOf(
                         Triple(Routes.HOME, "Home", Icons.Rounded.Home),
                         Triple(Routes.INBOX, "Inbox", Icons.Rounded.Inbox),

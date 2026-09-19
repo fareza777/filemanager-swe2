@@ -39,6 +39,9 @@ class OperationRunner(
 
     fun clearSummary() { _lastSummary.value = null }
 
+    /** Post a summary directly — used by flows that aggregate several ops (e.g. auto-tidy). */
+    fun postSummary(summary: OpSummary) { _lastSummary.value = summary }
+
     val isRunning: Boolean get() = job?.isActive == true
 
     /** Awaitable variant used by flows that must react to results (e.g. Inbox tidy). */
@@ -49,7 +52,14 @@ class OperationRunner(
         targetDir: String?,
         work: suspend (ProgressCb) -> OpSummary,
     ): OpSummary {
-        val cb: ProgressCb = { p -> _current.value = RunningOp(kind, label, p) }
+        var lastEmit = 0L
+        val cb: ProgressCb = { p ->
+            val now = android.os.SystemClock.uptimeMillis()
+            if (now - lastEmit >= 80 || p.itemsDone >= p.itemsTotal) {
+                _current.value = RunningOp(kind, label, p)
+                lastEmit = now
+            }
+        }
         _current.value = RunningOp(kind, label, null)
         return try {
             val summary = work(cb).let { if (it.kind == kind) it else it.copy(kind = kind) }
@@ -85,8 +95,13 @@ class OperationRunner(
     ) {
         if (isRunning) return
         job = scope.launch {
+            var lastEmit = 0L
             val cb: ProgressCb = { p ->
-                _current.value = RunningOp(kind, label, p)
+                val now = android.os.SystemClock.uptimeMillis()
+                if (now - lastEmit >= 80 || p.itemsDone >= p.itemsTotal) {
+                    _current.value = RunningOp(kind, label, p)
+                    lastEmit = now
+                }
             }
             _current.value = RunningOp(kind, label, null)
             try {

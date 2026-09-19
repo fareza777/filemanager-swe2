@@ -1,10 +1,12 @@
 package com.filezen.files.ui.home
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -13,6 +15,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -43,7 +47,8 @@ fun HomeScreen(nav: NavController, appVm: AppViewModel, vm: HomeViewModel = view
         topBar = {
             TopAppBar(
                 title = {
-                    Text("FileZen", fontWeight = FontWeight.Bold,
+                    Text("FileZen", style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.ExtraBold,
                         color = MaterialTheme.colorScheme.primary)
                 },
                 actions = {
@@ -51,6 +56,8 @@ fun HomeScreen(nav: NavController, appVm: AppViewModel, vm: HomeViewModel = view
                         Icon(Icons.Rounded.Settings, "Settings")
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent),
             )
         },
     ) { padding ->
@@ -58,44 +65,66 @@ fun HomeScreen(nav: NavController, appVm: AppViewModel, vm: HomeViewModel = view
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()),
         ) {
             // Search bar
-            OutlinedCard(
+            Card(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
                     .clickable { nav.navigate(Routes.SEARCH) },
                 shape = RoundedCornerShape(28.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
             ) {
                 Row(
-                    Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                    Modifier.padding(horizontal = 20.dp, vertical = 15.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(Icons.Rounded.Search, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.width(12.dp))
+                    Icon(Icons.Rounded.Search, null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(14.dp))
                     Text("Search files…", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
 
-            // Inbox nudge
+            // Inbox nudge — hero card with brand gradient
             if (untidy > 0) {
                 Spacer(Modifier.height(16.dp))
                 Card(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
                         .clickable { nav.navigate(Routes.INBOX) },
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer),
+                    shape = RoundedCornerShape(22.dp),
                 ) {
-                    Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Rounded.Inbox, null,
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer)
-                        Spacer(Modifier.width(12.dp))
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .background(
+                                androidx.compose.ui.graphics.Brush.linearGradient(
+                                    listOf(
+                                        MaterialTheme.colorScheme.primary,
+                                        MaterialTheme.colorScheme.tertiary.copy(alpha = 0.85f)
+                                            .compositeOver(MaterialTheme.colorScheme.primary)
+                                    )
+                                )
+                            )
+                            .padding(18.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = Color.White.copy(alpha = 0.18f),
+                            modifier = Modifier.size(46.dp),
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Rounded.Inbox, null, tint = Color.White)
+                            }
+                        }
+                        Spacer(Modifier.width(14.dp))
                         Column(Modifier.weight(1f)) {
                             Text("$untidy new files in Inbox",
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer)
-                            Text("Tap to tidy them up",
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = Color.White)
+                            Text("Tap to tidy them up — or auto-tidy them all",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = .75f))
+                                color = Color.White.copy(alpha = .85f))
                         }
-                        Icon(Icons.Rounded.ChevronRight, null,
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                        Icon(Icons.Rounded.ChevronRight, null, tint = Color.White)
                     }
                 }
             }
@@ -117,8 +146,8 @@ fun HomeScreen(nav: NavController, appVm: AppViewModel, vm: HomeViewModel = view
                                     else nav.navigate(Routes.preview(e.path))
                                 },
                         ) {
-                            ThumbBox(e, 72.dp)
-                            Spacer(Modifier.height(4.dp))
+                            ThumbBox(e, 76.dp)
+                            Spacer(Modifier.height(6.dp))
                             Text(e.name, style = MaterialTheme.typography.labelSmall,
                                 maxLines = 2, overflow = TextOverflow.Ellipsis)
                         }
@@ -150,12 +179,23 @@ fun HomeScreen(nav: NavController, appVm: AppViewModel, vm: HomeViewModel = view
                         Card(
                             modifier = Modifier.padding(4.dp)
                                 .clickable { nav.navigate(Routes.folder(f.path)) },
+                            shape = RoundedCornerShape(18.dp),
                             colors = CardDefaults.cardColors(
                                 containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
                         ) {
                             Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Rounded.Star, null, tint = MaterialTheme.colorScheme.primary)
-                                Spacer(Modifier.width(8.dp))
+                                Surface(
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.tertiaryContainer,
+                                    modifier = Modifier.size(34.dp),
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Rounded.Star, null,
+                                            tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                            modifier = Modifier.size(18.dp))
+                                    }
+                                }
+                                Spacer(Modifier.width(10.dp))
                                 Column {
                                     Text(f.label, fontWeight = FontWeight.Medium,
                                         maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -181,7 +221,17 @@ fun HomeScreen(nav: NavController, appVm: AppViewModel, vm: HomeViewModel = view
                             containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
                     ) {
                         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Rounded.History, null)
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.secondaryContainer,
+                                modifier = Modifier.size(34.dp),
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Rounded.History, null,
+                                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        modifier = Modifier.size(18.dp))
+                                }
+                            }
                             Spacer(Modifier.width(12.dp))
                             Text(p, style = MaterialTheme.typography.bodyMedium,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -199,9 +249,10 @@ fun HomeScreen(nav: NavController, appVm: AppViewModel, vm: HomeViewModel = view
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
                 ) {
-                    Column(Modifier.padding(16.dp)) {
+                    Column(Modifier.padding(18.dp)) {
                         Text("${formatSize(u.used)} of ${formatSize(u.total)} used",
-                            fontWeight = FontWeight.Medium)
+                            fontWeight = FontWeight.SemiBold,
+                            style = MaterialTheme.typography.titleMedium)
                         Spacer(Modifier.height(8.dp))
                         LinearProgressIndicator(
                             progress = { (u.used.toFloat() / u.total.coerceAtLeast(1)).coerceIn(0f, 1f) },
