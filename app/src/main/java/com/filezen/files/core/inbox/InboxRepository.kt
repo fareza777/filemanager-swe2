@@ -10,6 +10,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -39,11 +40,14 @@ class InboxRepository(
 
     /**
      * Reconcile DB with the filesystem: insert files seen for the first time
-     * (untidy), drop rows whose files no longer exist. Recursive, depth-limited,
-     * incremental — safe to call on every Inbox open.
+     * (untidy), drop rows whose files no longer exist or that left the watched
+     * roots while still untidy. Tidy rows survive un-watching a root so their
+     * state isn't lost. Recursive, depth-limited, incremental.
      */
     suspend fun scan(maxDepth: Int = 4, maxItems: Int = 5000): Unit = withContext(Dispatchers.IO) {
-        val known = db.inbox().allPaths().toMutableSet()
+        val knownItems = db.inbox().all().first()
+        val known = knownItems.map { it.path }.toMutableSet()
+        val tidyPaths = knownItems.filter { it.tidy }.map { it.path }.toSet()
         val found = mutableSetOf<String>()
         val newItems = mutableListOf<InboxItem>()
         val roots = roots()
@@ -77,6 +81,7 @@ class InboxRepository(
         }
         if (newItems.isNotEmpty()) db.inbox().insertAll(newItems)
         val gone = known.filter { it !in found }
+            .filter { p -> p !in tidyPaths || !File(p).exists() }
         if (gone.isNotEmpty()) db.inbox().remove(gone)
     }
 

@@ -52,7 +52,7 @@ class OperationRunner(
         val cb: ProgressCb = { p -> _current.value = RunningOp(kind, label, p) }
         _current.value = RunningOp(kind, label, null)
         return try {
-            val summary = work(cb)
+            val summary = work(cb).let { if (it.kind == kind) it else it.copy(kind = kind) }
             _lastSummary.value = summary
             record(kind, sourcesForLog, targetDir,
                 status = when {
@@ -89,9 +89,8 @@ class OperationRunner(
                 _current.value = RunningOp(kind, label, p)
             }
             _current.value = RunningOp(kind, label, null)
-            val started = System.currentTimeMillis()
             try {
-                val summary = work(cb)
+                val summary = work(cb).let { if (it.kind == kind) it else it.copy(kind = kind) }
                 _lastSummary.value = summary
                 record(kind, sourcesForLog, targetDir,
                     status = when {

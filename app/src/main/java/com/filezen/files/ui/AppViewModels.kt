@@ -236,6 +236,7 @@ class InboxViewModel : ViewModel() {
     val tidy = c.db.inbox().tidy()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val roots = c.settings.inboxRoots
+        .map { saved -> if (saved.isEmpty()) setOf(c.inbox.defaultRoot().absolutePath) else saved }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
     private val _scanning = MutableStateFlow(false)
     val scanning: StateFlow<Boolean> = _scanning
