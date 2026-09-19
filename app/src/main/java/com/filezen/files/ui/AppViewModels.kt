@@ -67,6 +67,21 @@ class AppViewModel : ViewModel() {
             c.fileEngine.delete(paths.map { File(it) }, cb)
         }
     }
+    fun opConvert(path: String, target: com.filezen.files.core.convert.ConvertEngine.Target) {
+        c.ops.launch(OpKind.CONVERT, "Converting to ${target.label}", listOf(path), null) {
+            val r = com.filezen.files.core.convert.ConvertEngine.convert(File(path), target)
+            OpSummary(OpKind.CONVERT, listOf(ItemResult(path, r.output.path, ItemStatus.DONE,
+                "saved ${com.filezen.files.core.model.formatSize(r.bytesSaved)}")))
+        }
+    }
+    fun opCompressImage(path: String) {
+        c.ops.launch(OpKind.COMPRESS, "Compressing image", listOf(path), null) {
+            val r = com.filezen.files.core.convert.ConvertEngine.compressImage(File(path))
+            OpSummary(OpKind.COMPRESS, listOf(ItemResult(path, r.output.path, ItemStatus.DONE,
+                if (r.bytesSaved > 0) "saved ${com.filezen.files.core.model.formatSize(r.bytesSaved)}"
+                else "already optimal")))
+        }
+    }
     fun opZip(paths: List<String>, dest: File) {
         c.ops.launch(OpKind.ZIP, "Compressing", paths, dest.path) { cb ->
             val zipName = if (paths.size == 1)

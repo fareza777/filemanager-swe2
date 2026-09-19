@@ -15,7 +15,7 @@ enum class ConflictPolicy { ASK, SKIP, KEEP_BOTH, OVERWRITE }
 
 enum class ItemStatus { DONE, SKIPPED, FAILED }
 
-enum class OpKind { COPY, MOVE, DELETE, RENAME, MKDIR, ZIP, UNZIP, TRASH, RESTORE, SORT, TIDY }
+enum class OpKind { COPY, MOVE, DELETE, RENAME, MKDIR, ZIP, UNZIP, TRASH, RESTORE, SORT, TIDY, CONVERT, COMPRESS }
 
 data class ItemResult(
     val source: String,

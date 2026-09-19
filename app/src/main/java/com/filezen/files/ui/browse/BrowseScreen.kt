@@ -58,6 +58,7 @@ fun BrowseScreen(
     var pendingOp by remember { mutableStateOf<Pair<List<String>, Boolean>?>(null) } // paths, isMove
     var deleteConfirm by remember { mutableStateOf<List<String>?>(null) }
     var extractTarget by remember { mutableStateOf<FileEntry?>(null) }
+    var convertTarget by remember { mutableStateOf<FileEntry?>(null) }
     var showDestPicker by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
     var showRulesPreview by remember { mutableStateOf(false) }
@@ -347,6 +348,8 @@ fun BrowseScreen(
                                     },
                                     isFavorite = appVm.isFavorite(e.path),
                                     onBasket = { appVm.basketAdd(e.path) },
+                                    onConvert = { convertTarget = e },
+                                    onCompress = { appVm.opCompressImage(e.path) },
                                 )
                             },
                         )
@@ -435,6 +438,11 @@ fun BrowseScreen(
             onDismiss = { deleteConfirm = null },
         )
     }
+    convertTarget?.let { e ->
+        ConvertDialog(e.name, com.filezen.files.core.convert.ConvertEngine.targetsFor(e),
+            onConvert = { t -> appVm.opConvert(e.path, t); convertTarget = null },
+            onDismiss = { convertTarget = null })
+    }
     extractTarget?.let { e ->
         ConfirmDialog(
             title = "Extract archive?",
@@ -479,6 +487,8 @@ private fun OverflowMenu(
     onFavorite: () -> Unit,
     isFavorite: Boolean,
     onBasket: () -> Unit,
+    onConvert: () -> Unit,
+    onCompress: () -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
     val ctx = androidx.compose.ui.platform.LocalContext.current
@@ -506,6 +516,17 @@ private fun OverflowMenu(
                     onClick = { onFavorite(); open = false },
                     leadingIcon = { Icon(Icons.Rounded.Star, null) },
                 )
+            }
+            val convTargets = com.filezen.files.core.convert.ConvertEngine.targetsFor(e)
+            if (convTargets.isNotEmpty()) {
+                DropdownMenuItem(text = { Text("Convert…") },
+                    onClick = { onConvert(); open = false },
+                    leadingIcon = { Icon(Icons.Rounded.Transform, null) })
+            }
+            if (com.filezen.files.core.convert.ConvertEngine.canCompress(e)) {
+                DropdownMenuItem(text = { Text("Compress image") },
+                    onClick = { onCompress(); open = false },
+                    leadingIcon = { Icon(Icons.Rounded.Compress, null) })
             }
             DropdownMenuItem(text = { Text("Compress to ZIP") }, onClick = { onZip(); open = false },
                 leadingIcon = { Icon(Icons.Rounded.FolderZip, null) })

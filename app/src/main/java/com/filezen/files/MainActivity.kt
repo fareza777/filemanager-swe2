@@ -24,6 +24,7 @@ import androidx.navigation.compose.*
 import androidx.navigation.navArgument
 import com.filezen.files.ui.*
 import com.filezen.files.ui.browse.BrowseScreen
+import com.filezen.files.ui.calendar.CalendarScreen
 import com.filezen.files.ui.common.OpProgressCard
 import com.filezen.files.ui.common.PermissionGate
 import com.filezen.files.ui.common.hasStorageAccess
@@ -48,6 +49,7 @@ object Routes {
     const val RULES = "rules"
     const val HISTORY = "history"
     const val RECENT = "recent"
+    const val CALENDAR = "calendar"
 
     fun folder(path: String) = "folder/${Uri.encode(path)}"
     fun preview(path: String) = "preview/${Uri.encode(path)}"
@@ -204,6 +206,7 @@ fun FileZenApp_(appVm: AppViewModel) {
             composable(Routes.TRASH) { TrashScreen(nav, appVm) }
             composable(Routes.RULES) { SortRulesScreen(nav, appVm) }
             composable(Routes.HISTORY) { HistoryScreen(nav) }
+            composable(Routes.CALENDAR) { CalendarScreen(nav, appVm) }
             composable(Routes.RECENT) { RecentScreen(nav, appVm) }
         }
     }

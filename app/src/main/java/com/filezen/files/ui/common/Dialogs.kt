@@ -71,6 +71,51 @@ fun ConfirmDialog(
     )
 }
 
+/** Convert dialog: shows the detected source type and format chips. */
+@Composable
+fun ConvertDialog(
+    name: String,
+    targets: List<com.filezen.files.core.convert.ConvertEngine.Target>,
+    onConvert: (com.filezen.files.core.convert.ConvertEngine.Target) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var sel by remember { mutableStateOf(targets.firstOrNull()) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Rounded.Transform, null, tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(10.dp))
+                Text("Convert file")
+            }
+        },
+        text = {
+            Column {
+                Text(name, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(12.dp))
+                Text("To format", style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    targets.forEach { t ->
+                        FilterChip(
+                            selected = sel == t,
+                            onClick = { sel = t },
+                            label = { Text(t.label) },
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { sel?.let(onConvert) }, enabled = sel != null) { Text("Convert") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
 /**
  * Folder picker sheet: browse the filesystem, descend into directories,
  * create a new folder, and confirm a destination path. Used by the sort-rule
