@@ -1,0 +1,446 @@
+package com.filezen.files.ui.browse
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.*
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavController
+import com.filezen.files.Routes
+import com.filezen.files.core.fileops.ConflictPolicy
+import com.filezen.files.core.model.*
+import com.filezen.files.data.prefs.*
+import com.filezen.files.ui.AppViewModel
+import com.filezen.files.ui.BrowseViewModel
+import com.filezen.files.ui.common.*
+import com.filezen.files.ops.Intents
+import kotlinx.coroutines.launch
+import java.io.File
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun BrowseScreen(
+    nav: NavController,
+    appVm: AppViewModel,
+    fixedPath: String?,
+    vm: BrowseViewModel = viewModel(),
+) {
+    val path by vm.path.collectAsState()
+    val entries by vm.entries.collectAsState()
+    val selection by vm.selection.collectAsState()
+    val viewMode by vm.viewMode.collectAsState()
+    val sortField by vm.sortField.collectAsState()
+    val sortAsc by vm.sortAsc.collectAsState()
+    val volumes by vm.volumes.collectAsState()
+    val loading by vm.loading.collectAsState()
+    val clipboard by appVm.clipboard.collectAsState()
+    val favorites by appVm.favorites.collectAsState()
+    val basket by appVm.basket.collectAsState()
+
+    var showMkdir by remember { mutableStateOf(false) }
+    var renameTarget by remember { mutableStateOf<FileEntry?>(null) }
+    var conflictFile by remember { mutableStateOf<String?>(null) }
+    var pendingOp by remember { mutableStateOf<Pair<List<String>, Boolean>?>(null) } // paths, isMove
+    var deleteConfirm by remember { mutableStateOf<List<String>?>(null) }
+    var extractTarget by remember { mutableStateOf<FileEntry?>(null) }
+    var showDestPicker by remember { mutableStateOf(false) }
+    var showSortMenu by remember { mutableStateOf(false) }
+    var showRulesPreview by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(fixedPath) { fixedPath?.let { vm.navigate(it) } }
+    val isRootPicker = fixedPath == null
+
+    fun doPaste(dest: String, policy: ConflictPolicy) {
+        val cb = clipboard ?: return
+        if (cb.cut) appVm.opMove(cb.paths, File(dest), policy)
+        else appVm.opCopy(cb.paths, File(dest), policy)
+        appVm.setClipboard(emptyList(), false)
+    }
+
+    fun openEntry(e: FileEntry) {
+        if (selection.isNotEmpty()) { vm.toggleSelect(e.path); return }
+        if (e.isDirectory) nav.navigate(Routes.folder(e.path))
+        else nav.navigate(Routes.preview(e.path))
+    }
+
+    Scaffold(
+        topBar = {
+            if (selection.isNotEmpty()) {
+                TopAppBar(
+                    title = { Text("${selection.size} selected") },
+                    navigationIcon = {
+                        IconButton(onClick = { vm.clearSelection() }) { Icon(Icons.Rounded.Close, "Clear") }
+                    },
+                    actions = {
+                        IconButton(onClick = { appVm.setClipboard(selection.toList(), cut = false); vm.clearSelection() }) {
+                            Icon(Icons.Rounded.ContentCopy, "Copy")
+                        }
+                        IconButton(onClick = { appVm.setClipboard(selection.toList(), cut = true); vm.clearSelection() }) {
+                            Icon(Icons.Rounded.DriveFileMove, "Move")
+                        }
+                        IconButton(onClick = { deleteConfirm = selection.toList() }) {
+                            Icon(Icons.Rounded.Delete, "Delete")
+                        }
+                        IconButton(onClick = { appVm.opZip(selection.toList(), File(path)); vm.clearSelection() }) {
+                            Icon(Icons.Rounded.FolderZip, "Zip")
+                        }
+                        IconButton(onClick = { Intents.share(nav.context, entries.filter { it.path in selection }) }) {
+                            Icon(Icons.Rounded.Share, "Share")
+                        }
+                        IconButton(onClick = {
+                            selection.forEach { appVm.basketAdd(it) }; vm.clearSelection()
+                        }) { Icon(Icons.Rounded.AddShoppingCart, "Add to basket") }
+                        IconButton(onClick = { vm.selectAll() }) {
+                            Icon(Icons.Rounded.SelectAll, "Select all")
+                        }
+                        if (selection.size == 1) {
+                            IconButton(onClick = {
+                                renameTarget = entries.firstOrNull { it.path == selection.first() }
+                            }) { Icon(Icons.Rounded.Edit, "Rename") }
+                        }
+                    },
+                )
+            } else {
+                TopAppBar(
+                    title = {
+                        if (isRootPicker) Text("Browse", fontWeight = FontWeight.Bold)
+                        else Text(File(path).name.ifBlank { "Storage" }, fontWeight = FontWeight.Bold,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    },
+                    navigationIcon = {
+                        if (!isRootPicker && fixedPath != null) {
+                            IconButton(onClick = { nav.popBackStack() }) { Icon(Icons.Rounded.ArrowBack, "Back") }
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = { vm.setViewMode(if (viewMode == ViewMode.LIST) ViewMode.GRID else ViewMode.LIST) }) {
+                            Icon(if (viewMode == ViewMode.LIST) Icons.Rounded.GridView else Icons.Rounded.ViewList, "View mode")
+                        }
+                        Box {
+                            IconButton(onClick = { showSortMenu = true }) { Icon(Icons.Rounded.Sort, "Sort") }
+                            DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
+                                SortField.values().forEach { f ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(f.name.lowercase().replaceFirstChar { it.uppercase() })
+                                                if (f == sortField) {
+                                                    Spacer(Modifier.width(8.dp))
+                                                    Icon(if (sortAsc) Icons.Rounded.ArrowUpward else Icons.Rounded.ArrowDownward,
+                                                        null, modifier = Modifier.size(16.dp))
+                                                }
+                                            }
+                                        },
+                                        onClick = {
+                                            vm.setSort(f, if (f == sortField) !sortAsc else true)
+                                            showSortMenu = false
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                        IconButton(onClick = { vm.refresh() }) { Icon(Icons.Rounded.Refresh, "Refresh") }
+                    },
+                )
+            }
+        },
+        floatingActionButton = {
+            if (selection.isEmpty() && !isRootPicker) {
+                ExtendedFloatingActionButton(
+                    onClick = { showMkdir = true },
+                    icon = { Icon(Icons.Rounded.CreateNewFolder, null) },
+                    text = { Text("New folder") },
+                )
+            }
+        },
+    ) { padding ->
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            if (!isRootPicker) {
+                Breadcrumb(path) { p -> if (p == "/") nav.popBackStack() else vm.navigate(p) }
+            }
+
+            // clipboard paste bar
+            clipboard?.takeIf { it.paths.isNotEmpty() }?.let { cb ->
+                Surface(
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(if (cb.cut) Icons.Rounded.ContentCut else Icons.Rounded.ContentCopy, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("${cb.paths.size} item(s) ready", Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyMedium)
+                        TextButton(onClick = {
+                            val dest = File(path)
+                            val conflicts = cb.paths.any { File(dest, File(it).name).exists() }
+                            if (conflicts) {
+                                pendingOp = cb.paths to cb.cut
+                                conflictFile = cb.paths.first { File(dest, File(it).name).exists() }
+                            } else doPaste(path, ConflictPolicy.SKIP)
+                        }) { Text("Paste") }
+                        TextButton(onClick = { appVm.setClipboard(emptyList(), false) }) { Text("Clear") }
+                    }
+                }
+            }
+
+            // basket bar
+            if (basket.isNotEmpty()) {
+                Surface(color = MaterialTheme.colorScheme.tertiaryContainer,
+                    modifier = Modifier.fillMaxWidth()) {
+                    Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Rounded.ShoppingCart, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("${basket.size} in basket", Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyMedium)
+                        TextButton(onClick = { showDestPicker = true }) { Text("Move") }
+                        TextButton(onClick = { appVm.basketClear() }) { Text("Clear") }
+                    }
+                }
+            }
+
+            if (loading && entries.isEmpty()) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+                return@Column
+            }
+
+            if (isRootPicker) {
+                // Volumes + categories overview
+                LazyColumn(Modifier.fillMaxSize()) {
+                    itemsIndexed(volumes) { _, v ->
+                        ListItem(
+                            headlineContent = { Text(v.name, fontWeight = FontWeight.SemiBold) },
+                            supportingContent = { Text(v.path, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            leadingContent = {
+                                Icon(
+                                    if (v.removable) Icons.Rounded.SdCard else Icons.Rounded.PhoneAndroid,
+                                    null, tint = MaterialTheme.colorScheme.primary,
+                                )
+                            },
+                            modifier = Modifier.clickable { nav.navigate(Routes.folder(v.path)) },
+                        )
+                    }
+                    item { SectionHeader("Categories") }
+                    val cats = listOf(
+                        FileType.IMAGE to "Images", FileType.VIDEO to "Videos",
+                        FileType.AUDIO to "Audio", FileType.DOCUMENT to "Documents",
+                        FileType.PDF to "PDFs", FileType.APK to "Apps",
+                        FileType.ARCHIVE to "Archives", FileType.TEXT to "Text",
+                    )
+                    itemsIndexed(cats) { _, (t, label) ->
+                        ListItem(
+                            headlineContent = { Text(label) },
+                            leadingContent = { Icon(iconFor(FileEntry("", "", false, 0, 0, t)), null, tint = tintFor(FileEntry("", "", false, 0, 0, t))) },
+                            modifier = Modifier.clickable { nav.navigate("${Routes.SEARCH}?type=${t.name}") },
+                        )
+                    }
+                }
+            } else if (entries.isEmpty() && !loading) {
+                EmptyState(Icons.Rounded.FolderOpen, "Empty folder", "Nothing to see here yet.")
+            } else if (viewMode == ViewMode.LIST) {
+                LazyColumn(Modifier.fillMaxSize()) {
+                    itemsIndexed(entries, key = { _, e -> e.path }) { _, e ->
+                        FileRow(
+                            e = e,
+                            selected = e.path in selection,
+                            onClick = { openEntry(e) },
+                            onLongClick = { vm.longPressSelect(e.path) },
+                            trailing = {
+                                OverflowMenu(
+                                    e = e,
+                                    onOpen = { openEntry(e) },
+                                    onRename = { renameTarget = e },
+                                    onZip = { appVm.opZip(listOf(e.path), File(path)) },
+                                    onExtract = { extractTarget = e },
+                                    onTrash = { deleteConfirm = listOf(e.path) },
+                                    onShare = { Intents.share(nav.context, listOf(e)) },
+                                    onFavorite = {
+                                        if (appVm.isFavorite(e.path)) appVm.removeFavorite(e.path)
+                                        else appVm.addFavorite(e.path, e.name)
+                                    },
+                                    isFavorite = appVm.isFavorite(e.path),
+                                    onBasket = { appVm.basketAdd(e.path) },
+                                )
+                            },
+                        )
+                    }
+                    item { Spacer(Modifier.height(96.dp)) }
+                }
+            } else {
+                LazyVerticalGrid(
+                    columns = GridCells.Adaptive(110.dp),
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    items(entries.size, key = { entries[it].path }) { i ->
+                        val e = entries[i]
+                        FileCard(
+                            e = e,
+                            selected = e.path in selection,
+                            onClick = { openEntry(e) },
+                            onLongClick = { vm.longPressSelect(e.path) },
+                        )
+                    }
+                    item { Spacer(Modifier.height(96.dp)) }
+                }
+            }
+        }
+    }
+
+    // ---- dialogs ----
+    if (showMkdir) {
+        TextInputDialog("New folder", hint = "Folder name", onConfirm = { name ->
+            scope.launch { FileZenEngine.mkdir(File(path), name); vm.refresh() }
+            showMkdir = false
+        }, onDismiss = { showMkdir = false })
+    }
+    renameTarget?.let { e ->
+        TextInputDialog("Rename", initial = e.name, hint = "Name", onConfirm = { newName ->
+            scope.launch { FileZenEngine.rename(File(e.path), newName); vm.refresh() }
+            renameTarget = null
+        }, onDismiss = { renameTarget = null })
+    }
+    conflictFile?.let { fname ->
+        AlertDialog(
+            onDismissRequest = { conflictFile = null; pendingOp = null },
+            title = { Text("Name conflict") },
+            text = { Text("“$fname” already exists at the destination. Apply to all conflicts.") },
+            confirmButton = {
+                Column {
+                    TextButton(onClick = {
+                        pendingOp?.let { (paths, cut) ->
+                            val cb = appVm.clipboard.value
+                            if (cut) appVm.opMove(paths, File(path), ConflictPolicy.OVERWRITE)
+                            else appVm.opCopy(paths, File(path), ConflictPolicy.OVERWRITE)
+                            appVm.setClipboard(emptyList(), false)
+                        }
+                        conflictFile = null; pendingOp = null
+                    }) { Text("Replace all") }
+                    TextButton(onClick = {
+                        pendingOp?.let { (paths, cut) ->
+                            if (cut) appVm.opMove(paths, File(path), ConflictPolicy.KEEP_BOTH)
+                            else appVm.opCopy(paths, File(path), ConflictPolicy.KEEP_BOTH)
+                            appVm.setClipboard(emptyList(), false)
+                        }
+                        conflictFile = null; pendingOp = null
+                    }) { Text("Keep both") }
+                    TextButton(onClick = {
+                        pendingOp?.let { (paths, cut) ->
+                            if (cut) appVm.opMove(paths, File(path), ConflictPolicy.SKIP)
+                            else appVm.opCopy(paths, File(path), ConflictPolicy.SKIP)
+                            appVm.setClipboard(emptyList(), false)
+                        }
+                        conflictFile = null; pendingOp = null
+                    }) { Text("Skip conflicts") }
+                }
+            },
+        )
+    }
+    deleteConfirm?.let { paths ->
+        ConfirmDialog(
+            title = "Move to trash?",
+            text = "${paths.size} item(s) will be moved to FileZen trash. You can restore them later.",
+            confirmLabel = "Move to trash",
+            onConfirm = { appVm.opTrash(paths); deleteConfirm = null; vm.clearSelection() },
+            onDismiss = { deleteConfirm = null },
+        )
+    }
+    extractTarget?.let { e ->
+        ConfirmDialog(
+            title = "Extract archive?",
+            text = "Extract “${e.name}” into this folder?",
+            confirmLabel = "Extract",
+            onConfirm = {
+                appVm.opUnzip(e.path, File(path), ConflictPolicy.KEEP_BOTH)
+                extractTarget = null
+            },
+            onDismiss = { extractTarget = null },
+        )
+    }
+    if (showDestPicker) {
+        DestinationSheet(
+            favorites = favorites,
+            currentPath = path,
+            onPick = { dest ->
+                appVm.opMove(basket.toList(), File(dest), ConflictPolicy.KEEP_BOTH)
+                appVm.basketClear()
+                showDestPicker = false
+            },
+            onBrowse = { nav.navigate(Routes.BROWSE) },
+            onDismiss = { showDestPicker = false },
+        )
+    }
+}
+
+@Composable
+private fun OverflowMenu(
+    e: FileEntry,
+    onOpen: () -> Unit,
+    onRename: () -> Unit,
+    onZip: () -> Unit,
+    onExtract: () -> Unit,
+    onTrash: () -> Unit,
+    onShare: () -> Unit,
+    onFavorite: () -> Unit,
+    isFavorite: Boolean,
+    onBasket: () -> Unit,
+) {
+    var open by remember { mutableStateOf(false) }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    Box {
+        IconButton(onClick = { open = true }) {
+            Icon(Icons.Rounded.MoreVert, "More")
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(text = { Text("Open") }, onClick = { onOpen(); open = false },
+                leadingIcon = { Icon(Icons.Rounded.FileOpen, null) })
+            if (!e.isDirectory) {
+                DropdownMenuItem(text = { Text("Open with…") }, onClick = {
+                    Intents.openWith(ctx, e); open = false
+                }, leadingIcon = { Icon(Icons.Rounded.OpenInNew, null) })
+                DropdownMenuItem(text = { Text("Share") }, onClick = { onShare(); open = false },
+                    leadingIcon = { Icon(Icons.Rounded.Share, null) })
+            }
+            DropdownMenuItem(text = { Text("Rename") }, onClick = { onRename(); open = false },
+                leadingIcon = { Icon(Icons.Rounded.Edit, null) })
+            DropdownMenuItem(text = { Text("Add to basket") }, onClick = { onBasket(); open = false },
+                leadingIcon = { Icon(Icons.Rounded.AddShoppingCart, null) })
+            if (e.isDirectory) {
+                DropdownMenuItem(
+                    text = { Text(if (isFavorite) "Remove favourite" else "Add favourite") },
+                    onClick = { onFavorite(); open = false },
+                    leadingIcon = { Icon(Icons.Rounded.Star, null) },
+                )
+            }
+            DropdownMenuItem(text = { Text("Compress to ZIP") }, onClick = { onZip(); open = false },
+                leadingIcon = { Icon(Icons.Rounded.FolderZip, null) })
+            if (e.type == FileType.ARCHIVE) {
+                DropdownMenuItem(text = { Text("Extract here") }, onClick = { onExtract(); open = false },
+                    leadingIcon = { Icon(Icons.Rounded.Unarchive, null) })
+            }
+            DropdownMenuItem(text = { Text("Move to trash") }, onClick = { onTrash(); open = false },
+                leadingIcon = { Icon(Icons.Rounded.Delete, null, tint = MaterialTheme.colorScheme.error) })
+        }
+    }
+}
+
+private val FileZenEngine = com.filezen.files.FileZenApp.c.fileEngine
