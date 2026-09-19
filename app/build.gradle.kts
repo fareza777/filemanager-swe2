@@ -15,8 +15,8 @@ android {
         applicationId = "com.filezen.files"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 3
+        versionName = "1.2.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // PRODUCTION TODO: replace with your real AdMob App ID from
@@ -35,7 +35,10 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
-            // PRODUCTION TODO: configure signingConfig via keystore.properties (see RELEASE.md)
+            // Upload key when keystore.properties exists (Play release); debug key
+            // as a sideload-friendly fallback so the release APK still installs.
+            signingConfig = if (rootProject.file("keystore.properties").exists())
+                signingConfigs.getByName("releaseUpload") else signingConfigs.getByName("debug")
         }
     }
 
