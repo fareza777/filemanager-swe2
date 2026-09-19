@@ -14,6 +14,7 @@ import com.filezen.files.data.prefs.SettingsStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -129,6 +130,56 @@ class InboxRepository(
         }
         return out
     }
+
+    /**
+     * Watch the top level of each inbox root with FileObserver; after a quiet
+     * period the [onChange] callback fires once (debounced — a burst of writes
+     * produces one rescan).
+     */
+    fun startWatching(
+        scope: kotlinx.coroutines.CoroutineScope,
+        debounceMs: Long = 1500,
+        onChange: suspend () -> Unit,
+    ) {
+        stopWatching()
+        val job = kotlinx.coroutines.SupervisorJob()
+        watchJob = job
+        val watchScope = kotlinx.coroutines.CoroutineScope(Dispatchers.Default + job)
+        var pending: kotlinx.coroutines.Job? = null
+        val fire = {
+            synchronized(this) {
+                pending?.cancel()
+                pending = watchScope.launch {
+                    kotlinx.coroutines.delay(debounceMs)
+                    onChange()
+                }
+            }
+        }
+        watchScope.launch(Dispatchers.IO) {
+            val dirs = roots().flatMap { r ->
+                listOf(r) + (r.listFiles()?.filter { it.isDirectory && !it.isHidden } ?: emptyList())
+            }
+            dirs.forEach { d ->
+                val obs = object : android.os.FileObserver(d.absolutePath,
+                    android.os.FileObserver.CREATE or android.os.FileObserver.MOVED_TO or
+                    android.os.FileObserver.DELETE or android.os.FileObserver.MOVED_FROM or
+                    android.os.FileObserver.MOVE_SELF) {
+                    override fun onEvent(event: Int, path: String?) { fire() }
+                }
+                obs.startWatching()
+                observers += obs
+            }
+        }
+    }
+
+    fun stopWatching() {
+        observers.forEach { it.stopWatching() }
+        observers.clear()
+        watchJob?.cancel(); watchJob = null
+    }
+
+    private val observers = mutableListOf<android.os.FileObserver>()
+    private var watchJob: kotlinx.coroutines.Job? = null
 
     suspend fun markTidy(paths: List<String>, tidy: Boolean = true) {
         paths.forEach { db.inbox().setTidy(it, tidy) }

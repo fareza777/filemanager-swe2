@@ -88,3 +88,21 @@ Also declare `READ_MEDIA_*` fallback usage.
   rename engine preview/collisions, sort-rule matching.
 - On-device smoke test: install `app-debug.apk`, grant All files access, drop
   files into `Download/` and run the Inbox → Tidy up flow.
+
+## 8. Optional before listing (recommended)
+
+- **Crash reporting (optional):** FileZen has no crash SDK by design (offline,
+  no data collection). If you want crash reports, add Firebase Crashlytics:
+  apply `com.google.gms.google-services` + `com.google.firebase.crashlytics`
+  plugins, add `firebase-crashlytics` dep, and drop `google-services.json`
+  into `app/`. Update the Play "Data safety" form if you enable it.
+- **Localization:** all strings live in `app/src/main/res/values/strings.xml`-style
+  literals for now — before a global listing, extract to `strings.xml` and add
+  `values-in/` (Indonesian) translations.
+- **Baseline profile (cold start):** `androidx.profileinstaller` is already a
+  dependency, so library profiles ship. For a full app profile, add the
+  `baselineprofile` Gradle plugin + a macrobenchmark generator module
+  (`:baselineprofile` running a simple startup+scroll journey) and point
+  `baselineProfile.automaticGenerationDuringBuild` at it.
+- **Parallel copy:** batches of ≥4 small files (<4 MB) now copy 4-way parallel;
+  large files and directories stay sequential and verify-first.

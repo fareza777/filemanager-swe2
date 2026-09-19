@@ -1,6 +1,7 @@
 package com.filezen.files.ui.common
 
 import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -65,12 +66,15 @@ fun ThumbBox(e: FileEntry, size: androidx.compose.ui.unit.Dp, modifier: Modifier
         Icon(iconFor(e), contentDescription = null, tint = tintFor(e),
             modifier = Modifier.size(size * 0.52f))
         if (e.type == FileType.IMAGE || e.type == FileType.VIDEO) {
+            val req = ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
+                .data(File(e.path))
+                .size(256)
+                .crossfade(true)
+            // Coil can't decode video frames by itself — wire the video decoder.
+            if (e.type == FileType.VIDEO)
+                req.decoderFactory(coil.decode.VideoFrameDecoder.Factory())
             AsyncImage(
-                model = ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
-                    .data(File(e.path))
-                    .size(256)
-                    .crossfade(true)
-                    .build(),
+                model = req.build(),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.size(size).clip(shape),
@@ -88,6 +92,7 @@ fun FileRow(
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
     trailing: (@Composable () -> Unit)? = null,
+    dirSize: Long? = null,
 ) {
     val bg = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
         else Color.Transparent
@@ -106,7 +111,8 @@ fun FileRow(
             Text(e.name, style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
-                (if (e.isDirectory) "Folder" else formatSize(e.size)) + " · " + formatDate(e.lastModified),
+                (if (e.isDirectory) (dirSize?.let { formatSize(it) } ?: "Folder")
+                    else formatSize(e.size)) + " · " + formatDate(e.lastModified),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -289,3 +295,24 @@ fun OpProgressCard(current: com.filezen.files.core.fileops.RunningOp?, onCancel:
 }
 
 
+
+
+@Composable
+fun SkeletonRow() {
+    val shimmer = rememberInfiniteTransition(label = "sk")
+    val a by shimmer.animateFloat(
+        0.35f, 0.75f,
+        infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Reverse),
+        label = "skA")
+    val col = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f * a + 0.06f)
+    Row(Modifier.fillMaxWidth().padding(vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(46.dp).clip(RoundedCornerShape(12.dp)).background(col))
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Box(Modifier.fillMaxWidth(0.55f).height(14.dp).clip(RoundedCornerShape(7.dp)).background(col))
+            Spacer(Modifier.height(6.dp))
+            Box(Modifier.fillMaxWidth(0.32f).height(10.dp).clip(RoundedCornerShape(5.dp)).background(col))
+        }
+    }
+}

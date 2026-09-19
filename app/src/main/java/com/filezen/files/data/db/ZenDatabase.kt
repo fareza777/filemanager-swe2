@@ -6,8 +6,8 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 
 @Database(
-    entities = [InboxItem::class, Favorite::class, TrashEntry::class, OperationRecord::class, SortRule::class],
-    version = 1,
+    entities = [InboxItem::class, Favorite::class, TrashEntry::class, OperationRecord::class, SortRule::class, HashCache::class, FileIndexEntry::class],
+    version = 2,
     exportSchema = false,
 )
 abstract class ZenDatabase : RoomDatabase() {
@@ -16,6 +16,8 @@ abstract class ZenDatabase : RoomDatabase() {
     abstract fun trash(): TrashDao
     abstract fun operations(): OperationDao
     abstract fun sortRules(): SortRuleDao
+    abstract fun hashCache(): HashCacheDao
+    abstract fun fileIndex(): FileIndexDao
 
     companion object {
         @Volatile private var inst: ZenDatabase? = null

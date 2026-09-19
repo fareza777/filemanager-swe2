@@ -104,3 +104,45 @@ interface SortRuleDao {
     @Query("UPDATE sort_rules SET enabled = :enabled WHERE id = :id")
     suspend fun setEnabled(id: Long, enabled: Boolean)
 }
+
+@Dao
+interface HashCacheDao {
+    @Query("SELECT sha256 FROM hash_cache WHERE path = :path AND size = :size AND lastModified = :mtime")
+    suspend fun lookup(path: String, size: Long, mtime: Long): String?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun putAll(entries: List<HashCache>)
+
+    @Query("DELETE FROM hash_cache WHERE path NOT IN (SELECT path FROM file_index)")
+    suspend fun pruneOrphans()
+}
+
+@Dao
+interface FileIndexDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(entries: List<FileIndexEntry>)
+
+    @Query("DELETE FROM file_index WHERE path = :path")
+    suspend fun remove(path: String)
+
+    @Query("DELETE FROM file_index")
+    suspend fun clear()
+
+    @Query("SELECT COUNT(*) FROM file_index")
+    suspend fun count(): Int
+
+    @Query("SELECT * FROM file_index WHERE name LIKE '%' || :q || '%' COLLATE NOCASE ORDER BY lastModified DESC LIMIT :limit")
+    suspend fun byName(q: String, limit: Int = 500): List<FileIndexEntry>
+
+    @Query("SELECT * FROM file_index WHERE type = :type ORDER BY lastModified DESC LIMIT :limit")
+    suspend fun byType(type: String, limit: Int = 2000): List<FileIndexEntry>
+
+    @Query("SELECT * FROM file_index WHERE lastModified BETWEEN :fromMs AND :toMs ORDER BY lastModified DESC LIMIT :limit")
+    suspend fun byDateRange(fromMs: Long, toMs: Long, limit: Int = 2000): List<FileIndexEntry>
+
+    @Query("SELECT DISTINCT (lastModified / 86400000) FROM file_index")
+    suspend fun daysWithFiles(): List<Long>
+
+    @Query("SELECT * FROM file_index ORDER BY lastModified DESC LIMIT :limit")
+    suspend fun allRows(limit: Int = 50000): List<FileIndexEntry>
+}

@@ -55,3 +55,24 @@ data class SortRule(
     val enabled: Boolean = true,
     val createdAt: Long = System.currentTimeMillis(),
 )
+
+/** Cached content hash for duplicate detection — rehash only when size/mtime change. */
+@Entity(tableName = "hash_cache", primaryKeys = ["path"])
+data class HashCache(
+    val path: String,
+    val size: Long,
+    val lastModified: Long,
+    val sha256: String,
+    val computedAt: Long,
+)
+
+/** Full-disk file index powering instant search and the calendar. */
+@Entity(tableName = "file_index", primaryKeys = ["path"])
+data class FileIndexEntry(
+    val path: String,
+    val name: String,
+    val size: Long,
+    val lastModified: Long,
+    val type: String,
+    val parentDir: String,
+)

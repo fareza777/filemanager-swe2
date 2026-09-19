@@ -57,19 +57,33 @@ class CalendarViewModel : ViewModel() {
         viewModelScope.launch {
             try {
                 val map = HashMap<LocalDate, MutableList<FileEntry>>()
-                Scanner.scan(
-                    listOf(android.os.Environment.getExternalStorageDirectory()),
-                    maxDepth = 12,
-                ).collect { batch ->
-                    for (e in batch) {
-                        if (e.isDirectory) continue
+                val idx = com.filezen.files.FileZenApp.c.fileIndex
+                if (idx.ready.value) {
+                    // Instant path: group the persisted index by day.
+                    for (e in idx.all()) {
                         val d = java.time.Instant.ofEpochMilli(e.lastModified)
                             .atZone(ZoneId.systemDefault()).toLocalDate()
                         val list = map.getOrPut(d) { mutableListOf() }
-                        if (list.size < 400) list += e
+                        if (list.size < 400) list += FileEntry(
+                            e.path, e.name, false, e.size, e.lastModified,
+                            com.filezen.files.core.model.FileType.valueOf(e.type))
                     }
-                    _byDay.value = map.mapValues { it.value.sortedByDescending { e -> e.lastModified } }
+                } else {
+                    Scanner.scan(
+                        listOf(android.os.Environment.getExternalStorageDirectory()),
+                        maxDepth = 12,
+                    ).collect { batch ->
+                        for (e in batch) {
+                            if (e.isDirectory) continue
+                            val d = java.time.Instant.ofEpochMilli(e.lastModified)
+                                .atZone(ZoneId.systemDefault()).toLocalDate()
+                            val list = map.getOrPut(d) { mutableListOf() }
+                            if (list.size < 400) list += e
+                        }
+                        _byDay.value = map.mapValues { it.value.sortedByDescending { e -> e.lastModified } }
+                    }
                 }
+                _byDay.value = map.mapValues { it.value.sortedByDescending { e -> e.lastModified } }
             } finally { _scanning.value = false }
         }
     }

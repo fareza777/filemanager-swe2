@@ -20,6 +20,7 @@ class AppViewModel : ViewModel() {
 
     val theme = c.settings.theme.stateIn(viewModelScope, SharingStarted.Eagerly, ThemeMode.SYSTEM)
     val accent = c.settings.accent.stateIn(viewModelScope, SharingStarted.Eagerly, ThemeAccent.TEAL)
+    val amoled = c.settings.amoled.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val adFree = c.billing.adFree
     val runningOp = c.ops.current
     val lastSummary = c.ops.lastSummary
@@ -62,6 +63,11 @@ class AppViewModel : ViewModel() {
             c.trash.trash(paths.map { File(it) })
         }
     }
+    /** Restore the N most recently trashed entries (Undo for the trash snackbar). */
+    fun undoTrash(count: Int) = viewModelScope.launch {
+        val rows = c.db.trash().all().first().take(count)
+        rows.forEach { c.trash.restore(it) }
+    }
     fun opDeleteForever(paths: List<String>) {
         c.ops.launch(OpKind.DELETE, "Deleting", paths, null) { cb ->
             c.fileEngine.delete(paths.map { File(it) }, cb)
@@ -88,7 +94,7 @@ class AppViewModel : ViewModel() {
                 File(paths[0]).nameWithoutExtension + ".zip" else "archive-${System.currentTimeMillis()}.zip"
             ZipEngine(c.fileEngine).compress(
                 paths.map { File(it) },
-                c.fileEngine.uniqueName(dest, zipName), cb,
+                c.fileEngine.uniqueName(dest, zipName), onProgress = cb,
             ).let { s ->
                 OpSummary(OpKind.ZIP, listOf(s))
             }
@@ -131,7 +137,7 @@ class HomeViewModel : ViewModel() {
         // Duplicate scan is heavy — run once per VM, off the UI path.
         viewModelScope.launch(Dispatchers.IO) {
             _dupWasted.value = runCatching {
-                StorageAnalyzer.duplicates(Environment.getExternalStorageDirectory())
+                StorageAnalyzer.duplicates(Environment.getExternalStorageDirectory(), cache = c.db.hashCache())
                     .sumOf { it.wasted }
             }.getOrDefault(0L)
             dupScanned = true
@@ -191,6 +197,9 @@ class BrowseViewModel : ViewModel() {
     val sortField = c.settings.sortField.stateIn(viewModelScope, SharingStarted.Eagerly, SortField.NAME)
     val sortAsc = c.settings.sortAsc.stateIn(viewModelScope, SharingStarted.Eagerly, true)
     val showHidden = c.settings.showHidden.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    val folderSizes = c.settings.folderSizes.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    private val _dirSizes = MutableStateFlow<Map<String, Long>>(emptyMap())
+    val dirSizes: StateFlow<Map<String, Long>> = _dirSizes
     val safRoots = c.settings.safRoots.stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
     private val _volumes = MutableStateFlow<List<Volume>>(emptyList())
     val volumes: StateFlow<List<VolumesShim>> = _volumes.map { list -> list.map { VolumesShim(it.name, it.root.path, it.removable) } }
@@ -231,6 +240,16 @@ class BrowseViewModel : ViewModel() {
             val list = withContext(Dispatchers.IO) { Scanner.listDir(p, hidden) }
             _entries.value = sort(list, sortField.value, sortAsc.value)
             _loading.value = false
+            _dirSizes.value = emptyMap()
+            if (folderSizes.value) {
+                val dirs = list.filter { it.isDirectory }.take(60)
+                for (d in dirs) {
+                    val sz = withContext(Dispatchers.IO) {
+                        runCatching { c.fileEngine.sizeOf(File(d.path)) }.getOrDefault(0L)
+                    }
+                    _dirSizes.value = _dirSizes.value + (d.path to sz)
+                }
+            }
         }
     }
 
@@ -294,7 +313,11 @@ class InboxViewModel : ViewModel() {
     private val _selection = MutableStateFlow<Set<String>>(emptySet())
     val selection: StateFlow<Set<String>> = _selection
 
-    init { scan() }
+    init {
+        scan()
+        // Realtime inbox: file writes under watched roots trigger a debounced rescan.
+        c.inbox.startWatching(viewModelScope) { scan() }
+    }
 
     fun scan() {
         if (_scanning.value) return
@@ -440,7 +463,7 @@ class StorageViewModel : ViewModel() {
                 _usage.value = StorageAnalyzer.usage(root)
                 _categories.value = StorageAnalyzer.categories(root)
                 _large.value = StorageAnalyzer.largeFiles(root)
-                _dups.value = StorageAnalyzer.duplicates(root)
+                _dups.value = StorageAnalyzer.duplicates(root, cache = c.db.hashCache())
             } finally { _analyzing.value = false }
         }
     }
@@ -490,10 +513,21 @@ class SearchViewModel : ViewModel() {
         job = viewModelScope.launch {
             try {
                 if (f.query.isNotBlank()) c.settings.addRecentQuery(f.query)
-                Scanner.scan(roots, f).collect { batch ->
-                    _results.value = (_results.value + batch)
+                if (c.fileIndex.ready.value) {
+                    // Instant path: query the persisted disk index.
+                    val rows = c.fileIndex.search(f.query.takeIf { it.isNotBlank() } ?: "")
+                    _results.value = rows.asSequence()
+                        .map { FileEntry(it.path, it.name, false, it.size, it.lastModified,
+                            FileType.valueOf(it.type)) }
+                        .filter { com.filezen.files.core.scan.Scanner.matches(it, f) }
                         .sortedByDescending { it.lastModified }
-                        .take(2000)
+                        .take(2000).toList()
+                } else {
+                    Scanner.scan(roots, f).collect { batch ->
+                        _results.value = (_results.value + batch)
+                            .sortedByDescending { it.lastModified }
+                            .take(2000)
+                    }
                 }
             } finally { _searching.value = false }
         }

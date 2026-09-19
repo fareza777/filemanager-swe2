@@ -30,6 +30,9 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.content.Intent
 import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class, FlowPreview::class)
@@ -48,6 +51,7 @@ fun BrowseScreen(
     val sortAsc by vm.sortAsc.collectAsState()
     val volumes by vm.volumes.collectAsState()
     val loading by vm.loading.collectAsState()
+    val dirSizes by vm.dirSizes.collectAsState()
     val clipboard by appVm.clipboard.collectAsState()
     val favorites by appVm.favorites.collectAsState()
     val basket by appVm.basket.collectAsState()
@@ -63,6 +67,21 @@ fun BrowseScreen(
     var showSortMenu by remember { mutableStateOf(false) }
     var showRulesPreview by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+
+    // SAF picker: grant FileZen access to an SD card / USB volume root.
+    val safLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            runCatching {
+                ctx.contentResolver.takePersistableUriPermission(
+                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+            }
+            val cur = vm.safRoots.value
+            scope.launch { com.filezen.files.FileZenApp.c.settings.setSafRoots(cur + uri.toString()) }
+        }
+    }
 
     LaunchedEffect(fixedPath) { fixedPath?.let { vm.navigate(it) } }
     val isRootPicker = fixedPath == null
@@ -291,6 +310,22 @@ fun BrowseScreen(
                             }
                         }
                     }
+                    item {
+                        ListItem(
+                            headlineContent = { Text("Grant SD card / USB access") },
+                            supportingContent = {
+                                Text("Pick the removable volume so FileZen can write to it",
+                                    style = MaterialTheme.typography.bodySmall)
+                            },
+                            leadingContent = {
+                                Icon(Icons.Rounded.SdCard, null,
+                                    tint = MaterialTheme.colorScheme.primary)
+                            },
+                            modifier = Modifier.clickable {
+                                runCatching { safLauncher.launch(null) }
+                            },
+                        )
+                    }
                     item { SectionHeader("Categories") }
                     val cats = listOf(
                         FileType.IMAGE to "Images", FileType.VIDEO to "Videos",
@@ -323,6 +358,10 @@ fun BrowseScreen(
                         )
                     }
                 }
+            } else if (loading) {
+                Column(Modifier.fillMaxSize().padding(horizontal = 10.dp)) {
+                    repeat(9) { SkeletonRow() }
+                }
             } else if (entries.isEmpty() && !loading) {
                 EmptyState(Icons.Rounded.FolderOpen, "Empty folder", "Nothing to see here yet.")
             } else if (viewMode == ViewMode.LIST) {
@@ -331,6 +370,7 @@ fun BrowseScreen(
                         FileRow(
                             e = e,
                             selected = e.path in selection,
+                            dirSize = dirSizes[e.path],
                             onClick = { openEntry(e) },
                             onLongClick = { vm.longPressSelect(e.path) },
                             trailing = {

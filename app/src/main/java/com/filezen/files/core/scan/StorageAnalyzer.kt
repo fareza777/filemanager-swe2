@@ -82,6 +82,7 @@ object StorageAnalyzer {
         root: File,
         minBytes: Long = 256 * 1024,
         includeHidden: Boolean = false,
+        cache: com.filezen.files.data.db.HashCacheDao? = null,
     ): List<DuplicateGroup> = withContext(Dispatchers.IO) {
         val bySize = HashMap<Long, MutableList<File>>()
         val stack = ArrayDeque<File>(); stack.add(root)
@@ -100,17 +101,26 @@ object StorageAnalyzer {
             }
         }
         val groups = mutableListOf<DuplicateGroup>()
+        val toCache = ArrayList<com.filezen.files.data.db.HashCache>()
         for ((_, files) in bySize) {
             currentCoroutineContext().ensureActive()
             if (files.size < 2) continue
             val byHash = HashMap<String, MutableList<FileEntry>>()
             for (f in files) {
                 currentCoroutineContext().ensureActive()
-                val h = try { sha256(f) } catch (e: Exception) { continue }
+                val mtime = f.lastModified()
+                val h = try {
+                    cache?.lookup(f.absolutePath, f.length(), mtime)
+                        ?: sha256(f).also { h ->
+                            toCache += com.filezen.files.data.db.HashCache(
+                                f.absolutePath, f.length(), mtime, h, System.currentTimeMillis())
+                        }
+                } catch (e: Exception) { continue }
                 byHash.getOrPut(h) { mutableListOf() }.add(FileEntry.from(f))
             }
             for ((h, list) in byHash) if (list.size > 1) groups += DuplicateGroup(h, list)
         }
+        if (toCache.isNotEmpty()) try { cache?.putAll(toCache) } catch (_: Exception) {}
         groups.sortedByDescending { it.wasted }
     }
 

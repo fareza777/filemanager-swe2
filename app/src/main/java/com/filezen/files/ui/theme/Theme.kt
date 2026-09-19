@@ -100,6 +100,7 @@ private val ZenShapes = Shapes(
 fun FileZenTheme(
     mode: ThemeMode = ThemeMode.SYSTEM,
     accent: ThemeAccent = ThemeAccent.TEAL,
+    amoled: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val dark = when (mode) {
@@ -119,5 +120,14 @@ fun FileZenTheme(
             tertiary = Color(if (dark) a.dtert else a.ltert),
         )
     }
-    MaterialTheme(colorScheme = colors, shapes = ZenShapes, content = content)
+    val scheme = if (dark && amoled) colors.copy(
+        background = Color(0xFF000000),
+        surface = Color(0xFF000000),
+        surfaceContainer = Color(0xFF101010),
+        surfaceContainerLow = Color(0xFF0A0A0A),
+        surfaceContainerHigh = Color(0xFF181818),
+        surfaceContainerHighest = Color(0xFF1F1F1F),
+        surfaceContainerLowest = Color(0xFF000000),
+    ) else colors
+    MaterialTheme(colorScheme = scheme, shapes = ZenShapes, content = content)
 }

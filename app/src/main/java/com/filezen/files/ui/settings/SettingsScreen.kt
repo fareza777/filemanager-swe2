@@ -39,6 +39,8 @@ fun SettingsScreen(nav: NavController, appVm: AppViewModel, inboxVm: InboxViewMo
     val price by c.billing.price.collectAsState()
     val viewMode by c.settings.viewMode.collectAsState(initial = ViewMode.LIST)
     val showHiddenFlow by c.settings.showHidden.collectAsState(initial = false)
+    val amoled by c.settings.amoled.collectAsState(initial = false)
+    val folderSizes by c.settings.folderSizes.collectAsState(initial = false)
     val scope = rememberCoroutineScope()
 
     Scaffold(
@@ -151,6 +153,26 @@ fun SettingsScreen(nav: NavController, appVm: AppViewModel, inboxVm: InboxViewMo
                         Text("Show hidden files", Modifier.weight(1f))
                         Switch(checked = showHiddenFlow,
                             onCheckedChange = { scope.launch { c.settings.setShowHidden(it) } })
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Pitch black dark theme")
+                            Text("Saves battery on OLED screens",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Switch(checked = amoled,
+                            onCheckedChange = { scope.launch { c.settings.setAmoled(it) } })
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Folder sizes")
+                            Text("Show each folder's total size in the list",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Switch(checked = folderSizes,
+                            onCheckedChange = { scope.launch { c.settings.setFolderSizes(it) } })
                     }
                 }
             }

@@ -13,6 +13,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
+import com.filezen.files.core.fileops.OpKind
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -63,7 +64,8 @@ class MainActivity : ComponentActivity() {
             val appVm: AppViewModel = viewModel()
             val theme by appVm.theme.collectAsState()
             val accent by appVm.accent.collectAsState()
-            FileZenTheme(mode = theme, accent = accent) {
+            val amoled by appVm.amoled.collectAsState()
+            FileZenTheme(mode = theme, accent = accent, amoled = amoled) {
                 FileZenApp_(appVm)
             }
         }
@@ -115,7 +117,12 @@ fun FileZenApp_(appVm: AppViewModel) {
                 s.succeeded == 0 -> "Failed: ${s.results.firstOrNull { it.error != null }?.error ?: "error"}"
                 else -> "${s.succeeded} done, ${s.failed} failed"
             }
-            snack.showSnackbar(msg)
+            val undoCount = if (s.kind == OpKind.TRASH && s.succeeded > 0) s.succeeded else 0
+            val res = snack.showSnackbar(
+                msg, actionLabel = if (undoCount > 0) "Undo" else null,
+                withDismissAction = true,
+                duration = if (undoCount > 0) SnackbarDuration.Long else SnackbarDuration.Short)
+            if (res == SnackbarResult.ActionPerformed && undoCount > 0) appVm.undoTrash(undoCount)
             appVm.dismissSummary()
         }
     }

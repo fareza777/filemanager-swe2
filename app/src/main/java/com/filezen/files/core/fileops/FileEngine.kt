@@ -3,6 +3,9 @@ package com.filezen.files.core.fileops
 import android.os.StatFs
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
@@ -82,9 +85,58 @@ class FileEngine {
         policy: ConflictPolicy,
         onProgress: ProgressCb = {},
     ): OpSummary = withContext(io) {
-        runBatch(OpKind.COPY, sources, destDir, policy, onProgress) { src, dst ->
-            copyTree(src, dst)
+        // Small files copy faster in parallel (bounded 4-way); large files/dirs stay sequential.
+        val small = sources.filter { it.isFile && it.length() < 4L * 1024 * 1024 }
+        if (small.size < 4 || small.size != sources.size) {
+            return@withContext runBatch(OpKind.COPY, sources, destDir, policy, onProgress) { src, dst ->
+                copyTree(src, dst)
+            }
         }
+        if (!destDir.exists() && !destDir.mkdirs()) {
+            return@withContext OpSummary(OpKind.COPY, sources.map {
+                ItemResult(it.path, null, ItemStatus.FAILED, "Cannot create destination")
+            })
+        }
+        // Resolve all targets sequentially first so name conflicts can't race.
+        val plan = sources.map { src ->
+            val dst = if (!src.exists()) null else resolveTarget(destDir, src.name, policy)
+            Triple(src, dst, if (src.exists()) 0 else 1)
+        }
+        val results = java.util.concurrent.ConcurrentLinkedQueue<ItemResult>()
+        val bytesDone = java.util.concurrent.atomic.AtomicLong()
+        val bytesTotal = sources.sumOf { it.length() }
+        val done = java.util.concurrent.atomic.AtomicInteger()
+        val gate = kotlinx.coroutines.sync.Semaphore(4)
+        coroutineScope {
+            plan.map { (src, dst, missing) ->
+                async {
+                    currentCoroutineContext().ensureActive()
+                    if (missing == 1) {
+                        results += ItemResult(src.path, null, ItemStatus.FAILED, "Source not found")
+                        done.incrementAndGet(); return@async
+                    }
+                    if (dst == null) {
+                        results += ItemResult(src.path, null, ItemStatus.SKIPPED)
+                        done.incrementAndGet(); return@async
+                    }
+                    gate.acquire()
+                    try {
+                        if (dst.exists() && policy == ConflictPolicy.OVERWRITE) dst.deleteRecursively()
+                        copyTree(src, dst)
+                        bytesDone.addAndGet(src.length())
+                        results += ItemResult(src.path, dst.path, ItemStatus.DONE)
+                    } catch (ce: CancellationException) {
+                        if (dst.exists() && dst.path != src.path) dst.deleteRecursively()
+                        throw ce
+                    } catch (e: Exception) {
+                        results += ItemResult(src.path, null, ItemStatus.FAILED, e.message ?: "I/O error")
+                    } finally { gate.release() }
+                    val i = done.incrementAndGet()
+                    onProgress(OpProgress(i, sources.size, src.name, bytesDone.get(), bytesTotal))
+                }
+            }.awaitAll()
+        }
+        OpSummary(OpKind.COPY, results.toList())
     }
 
     /**
@@ -146,7 +198,8 @@ class FileEngine {
                 ItemResult(it.path, null, ItemStatus.FAILED, "Cannot create destination")
             })
         }
-        val needed = sources.sumOf { sizeOf(it) }
+        val sizes = sources.map { it to sizeOf(it) }.toMap()
+        val needed = sizes.values.sum()
         val free = freeSpace(destDir)
         if (needed > 0 && free < needed) throw InsufficientSpaceException(needed, free)
 
@@ -168,7 +221,7 @@ class FileEngine {
                 if (dst.exists() && policy == ConflictPolicy.OVERWRITE) dst.deleteRecursively()
                 onProgress(OpProgress(i, sources.size, src.name, bytesDone, bytesTotal))
                 op(src, dst)
-                bytesDone += sizeOf(src)
+                bytesDone += sizes[src] ?: 0
                 results += ItemResult(src.path, dst.path, ItemStatus.DONE)
             } catch (ce: CancellationException) {
                 // clean partial destination then rethrow

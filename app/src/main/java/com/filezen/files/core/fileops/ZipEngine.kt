@@ -14,18 +14,25 @@ import java.util.zip.ZipOutputStream
 
 class ZipEngine(private val engine: FileEngine = FileEngine()) {
 
-    /** Compress sources into [zipFile] (created inside destDir). */
+    /**
+     * Compress sources into [zipFile] (created inside destDir).
+     * [storeOnly] skips deflate for already-compressed media (jpg, mp4, zip…)
+     * — much faster, near-zero size penalty.
+     */
     suspend fun compress(
         sources: List<File>,
         zipFile: File,
+        storeOnly: Boolean = false,
         onProgress: ProgressCb = {},
     ): ItemResult = withContext(Dispatchers.IO) {
         try {
             if (zipFile.exists() && !zipFile.delete()) throw IOException("Cannot overwrite ${zipFile.name}")
             ZipOutputStream(FileOutputStream(zipFile).buffered()).use { zos ->
+                if (storeOnly) zos.setLevel(0)
                 var done = 0
                 val total = sources.sumOf { countFiles(it) }
-                for (src in sources) addToZip(zos, src, src.name, onProgress, done, total).also { done += countFiles(src) }
+                for (src in sources) addToZip(zos, src, src.name, onProgress, done, total)
+                    .also { done += countFiles(src) }
             }
             ItemResult(zipFile.path, zipFile.path, ItemStatus.DONE)
         } catch (ce: kotlinx.coroutines.CancellationException) {

@@ -13,6 +13,8 @@ import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -64,7 +66,7 @@ fun PreviewScreen(nav: NavController, path: String) {
                 FileType.IMAGE -> ImagePreview(file)
                 FileType.PDF -> PdfPreview(file)
                 FileType.TEXT, FileType.DOCUMENT -> TextPreview(file)
-                FileType.VIDEO, FileType.AUDIO -> MediaPreviewCard(entry)
+                FileType.VIDEO, FileType.AUDIO -> MediaPlayer(entry)
                 else -> GenericPreviewCard(entry)
             }
         }
@@ -171,21 +173,35 @@ private fun PdfPreview(file: File) {
 }
 
 @Composable
-private fun MediaPreviewCard(e: FileEntry) {
+private fun MediaPlayer(e: FileEntry) {
     val ctx = LocalContext.current
-    Column(
-        Modifier.fillMaxSize().padding(32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        ThumbBoxBig(e)
-        Spacer(Modifier.height(16.dp))
-        Text(e.name, fontWeight = FontWeight.SemiBold)
-        Text("${formatSize(e.size)} · ${formatDate(e.lastModified)}",
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(20.dp))
-        Button(onClick = { Intents.openWith(ctx, e) }) {
-            Icon(Icons.Rounded.PlayArrow, null); Spacer(Modifier.width(8.dp)); Text("Play")
+    val player = remember {
+        androidx.media3.exoplayer.ExoPlayer.Builder(ctx).build().apply {
+            setMediaItem(androidx.media3.common.MediaItem.fromUri(
+                android.net.Uri.fromFile(java.io.File(e.path))))
+            prepare()
+        }
+    }
+    DisposableEffect(Unit) { onDispose { player.release() } }
+    Column(Modifier.fillMaxSize()) {
+        androidx.compose.ui.viewinterop.AndroidView(
+            factory = { c ->
+                androidx.media3.ui.PlayerView(c).apply {
+                    this.player = player
+                    useController = true
+                }
+            },
+            modifier = Modifier.fillMaxWidth()
+                .height(if (e.type == FileType.VIDEO) 320.dp else 140.dp)
+                .padding(16.dp)
+                .clip(RoundedCornerShape(18.dp)),
+        )
+        Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(e.name, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            Text("${formatSize(e.size)} · ${formatDate(e.lastModified)}",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall)
         }
     }
 }
