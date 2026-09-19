@@ -104,6 +104,7 @@ fun SortRulesScreen(nav: NavController, appVm: AppViewModel, vm: StorageViewMode
     var matchType by remember { mutableStateOf("EXTENSION") }
     var pattern by remember { mutableStateOf("") }
     var target by remember { mutableStateOf("") }
+    var pickFolder by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -159,9 +160,19 @@ fun SortRulesScreen(nav: NavController, appVm: AppViewModel, vm: StorageViewMode
     if (showAdd) {
         AlertDialog(
             onDismissRequest = { showAdd = false },
-            title = { Text("New sort rule") },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.DriveFileMove, null,
+                        tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(10.dp))
+                    Text("New sort rule")
+                }
+            },
             text = {
                 Column {
+                    Text("When a file matches…", style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(8.dp))
                     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                         listOf("EXTENSION", "CONTAINS", "REGEX").forEachIndexed { i, t ->
                             SegmentedButton(
@@ -174,27 +185,87 @@ fun SortRulesScreen(nav: NavController, appVm: AppViewModel, vm: StorageViewMode
                     Spacer(Modifier.height(12.dp))
                     OutlinedTextField(
                         value = pattern, onValueChange = { pattern = it },
+                        leadingIcon = {
+                            Icon(when (matchType) {
+                                "EXTENSION" -> Icons.Rounded.Extension
+                                "CONTAINS" -> Icons.Rounded.Abc
+                                else -> Icons.Rounded.Code
+                            }, null)
+                        },
                         label = { Text(when (matchType) {
                             "EXTENSION" -> "Extension (e.g. pdf)"
                             "CONTAINS" -> "Name contains"
                             else -> "Regex"
                         }) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(16.dp))
+                    Text("…move it to", style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = target, onValueChange = { target = it },
-                        label = { Text("Destination folder (absolute path)") },
-                        singleLine = true, modifier = Modifier.fillMaxWidth())
+                    Surface(
+                        onClick = { pickFolder = true },
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Row(
+                            Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Rounded.Folder, null,
+                                tint = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    if (target.isBlank()) "Choose folder…"
+                                    else target.substringAfterLast('/').ifBlank { target },
+                                    fontWeight = FontWeight.Medium, maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis)
+                                if (target.isNotBlank()) {
+                                    Text(target, style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
+                            Icon(Icons.Rounded.ChevronRight, null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    if (pattern.isNotBlank() && target.isNotBlank()) {
+                        Spacer(Modifier.height(12.dp))
+                        Surface(
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
+                        ) {
+                            Text(
+                                "${com.filezen.files.core.fileops.SortRuleEngine.describe(
+                                    com.filezen.files.data.db.SortRule(
+                                        matchType = matchType, pattern = pattern, targetPath = target))} → ${target.substringAfterLast('/')}",
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer)
+                        }
+                    }
                 }
             },
             confirmButton = {
-                TextButton(onClick = {
-                    if (pattern.isNotBlank() && target.isNotBlank()) {
+                Button(
+                    onClick = {
                         vm.addRule(matchType, pattern.trim(), target.trim())
                         pattern = ""; target = ""; showAdd = false
-                    }
-                }) { Text("Add") }
+                    },
+                    enabled = pattern.isNotBlank() && target.isNotBlank(),
+                ) { Text("Add rule") }
             },
             dismissButton = { TextButton(onClick = { showAdd = false }) { Text("Cancel") } },
+        )
+    }
+
+    if (pickFolder) {
+        FolderPickerSheet(
+            startPath = target.ifBlank {
+                android.os.Environment.getExternalStorageDirectory().absolutePath },
+            onPick = { target = it; pickFolder = false },
+            onDismiss = { pickFolder = false },
         )
     }
 }

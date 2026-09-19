@@ -5,7 +5,11 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
@@ -121,16 +125,18 @@ fun FileZenApp_(appVm: AppViewModel) {
                 OpProgressCard(runningOp) { appVm.cancelOp() }
                 NavigationBar(
                     containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                    tonalElevation = 0.dp,
                 ) {
                     val route = currentRoute
                     val items = listOf(
                         Triple(Routes.HOME, "Home", Icons.Rounded.Home),
                         Triple(Routes.INBOX, "Inbox", Icons.Rounded.Inbox),
-                        Triple(Routes.BROWSE, "Browse", Icons.Rounded.Folder),
+                        Triple(Routes.BROWSE, "Browse", Icons.Rounded.FolderCopy),
                         Triple(Routes.STORAGE, "Storage", Icons.Rounded.DonutLarge),
                     )
                     items.forEach { (r, label, icon) ->
-                        NavigationBarItem(
+                        ZenNavItem(
+                            route = r, label = label, icon = icon,
                             selected = route == r,
                             onClick = {
                                 if (route != r) {
@@ -140,8 +146,6 @@ fun FileZenApp_(appVm: AppViewModel) {
                                     }
                                 }
                             },
-                            icon = { Icon(icon, label) },
-                            label = { Text(label) },
                         )
                     }
                 }
@@ -202,5 +206,65 @@ fun FileZenApp_(appVm: AppViewModel) {
             composable(Routes.HISTORY) { HistoryScreen(nav) }
             composable(Routes.RECENT) { RecentScreen(nav, appVm) }
         }
+    }
+}
+
+/**
+ * Bottom-nav item with a spring-loaded pill that sweeps in behind the icon,
+ * an icon that briefly pops bigger, and a label that firms up when active.
+ */
+@Composable
+private fun androidx.compose.foundation.layout.RowScope.ZenNavItem(
+    route: String,
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val pillAlpha by androidx.compose.animation.core.animateFloatAsState(
+        if (selected) 1f else 0f,
+        androidx.compose.animation.core.tween(250), label = "pillA")
+    val pillScale by androidx.compose.animation.core.animateFloatAsState(
+        if (selected) 1f else 0.55f,
+        androidx.compose.animation.core.spring(
+            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
+            stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow),
+        label = "pillS")
+    val iconTint = if (selected) MaterialTheme.colorScheme.primary
+        else MaterialTheme.colorScheme.onSurfaceVariant
+
+    Column(
+        modifier = Modifier
+            .weight(1f)
+            .clickable(
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                indication = null,
+                onClick = onClick)
+            .padding(vertical = 10.dp),
+        horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+    ) {
+        Box(contentAlignment = androidx.compose.ui.Alignment.Center,
+            modifier = Modifier.height(30.dp)) {
+            if (pillAlpha > 0f) {
+                Box(
+                    Modifier
+                        .size(width = 58.dp * pillScale, height = 30.dp)
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(15.dp))
+                        .background(
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.14f * pillAlpha)
+                        )
+                )
+            }
+            Icon(icon, label, tint = iconTint,
+                modifier = Modifier.size(23.dp + (if (selected) 1.dp else 0.dp)))
+        }
+        Spacer(Modifier.height(3.dp))
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = if (selected) androidx.compose.ui.text.font.FontWeight.Bold
+                else androidx.compose.ui.text.font.FontWeight.Normal,
+            color = iconTint,
+        )
     }
 }

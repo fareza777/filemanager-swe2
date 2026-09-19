@@ -49,6 +49,8 @@ fun HomeScreen(nav: NavController, appVm: AppViewModel, vm: HomeViewModel = view
     val lastPath by vm.lastPath.collectAsState()
     val usage by vm.usage.collectAsState()
     val untidy by vm.untidyCount.collectAsState()
+    val trashSize by vm.trashSize.collectAsState()
+    val dupWasted by vm.dupWasted.collectAsState()
     val adFree by appVm.adFree.collectAsState()
 
     LaunchedEffect(Unit) { vm.refresh() }
@@ -124,6 +126,15 @@ fun HomeScreen(nav: NavController, appVm: AppViewModel, vm: HomeViewModel = view
                 AnimatedVisibility(entered, enter = enterIn(80)) {
                 StorageRingCard(u) { nav.navigate(Routes.STORAGE) }
                 }
+            }
+
+            // Optimise — quick reclaim card (trash + identical duplicates)
+            Spacer(Modifier.height(14.dp))
+            AnimatedVisibility(entered, enter = enterIn(140)) {
+            OptimiseCard(
+                reclaimable = trashSize + dupWasted,
+                onClick = { nav.navigate(Routes.STORAGE) },
+            )
             }
 
             // Inbox nudge — hero card with brand gradient
@@ -305,6 +316,54 @@ fun HomeScreen(nav: NavController, appVm: AppViewModel, vm: HomeViewModel = view
             Spacer(Modifier.height(16.dp))
             if (!adFree) ZenBanner(Modifier.padding(horizontal = 16.dp))
             Spacer(Modifier.height(24.dp))
+        }
+    }
+}
+
+/** Optimise card — shows reclaimable space (trash + duplicates), opens Storage. */
+@Composable
+private fun OptimiseCard(reclaimable: Long, onClick: () -> Unit) {
+    val primary = MaterialTheme.colorScheme.primary
+    val tertiary = MaterialTheme.colorScheme.tertiary
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).clickable(onClick = onClick),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+    ) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = tertiary.copy(alpha = 0.18f)
+                    .compositeOver(MaterialTheme.colorScheme.surfaceContainerLow),
+                modifier = Modifier.size(44.dp),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(Icons.Rounded.AutoAwesome, null, tint = tertiary)
+                }
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Optimise", fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleSmall)
+                Text(
+                    if (reclaimable > 0)
+                        "Free up ~${formatSize(reclaimable)} — trash, duplicates & large files"
+                    else "Storage looks tidy — tap to analyse deeper",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+            Surface(
+                shape = CircleShape,
+                color = primary.copy(alpha = 0.12f),
+                modifier = Modifier.size(34.dp),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(Icons.Rounded.ChevronRight, null, tint = primary,
+                        modifier = Modifier.size(20.dp))
+                }
+            }
         }
     }
 }

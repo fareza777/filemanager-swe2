@@ -105,7 +105,23 @@ class HomeViewModel : ViewModel() {
     private val _allRecent = MutableStateFlow<List<FileEntry>>(emptyList())
     val allRecent: StateFlow<List<FileEntry>> = _allRecent
 
-    init { refresh() }
+    val trashSize = c.db.trash().totalSize()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
+    private val _dupWasted = MutableStateFlow(0L)
+    val dupWasted: StateFlow<Long> = _dupWasted
+    private var dupScanned = false
+
+    init {
+        refresh()
+        // Duplicate scan is heavy — run once per VM, off the UI path.
+        viewModelScope.launch(Dispatchers.IO) {
+            _dupWasted.value = runCatching {
+                StorageAnalyzer.duplicates(Environment.getExternalStorageDirectory())
+                    .sumOf { it.wasted }
+            }.getOrDefault(0L)
+            dupScanned = true
+        }
+    }
 
     private fun recentRoots(): List<File> = listOf(
         Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
@@ -397,6 +413,8 @@ class StorageViewModel : ViewModel() {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val history = c.db.operations().recent()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val autoSort = c.settings.autoSort
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     fun analyze() {
         if (_analyzing.value) return
@@ -425,6 +443,7 @@ class StorageViewModel : ViewModel() {
     }
     fun deleteRule(r: SortRule) = viewModelScope.launch { c.db.sortRules().delete(r) }
     fun toggleRule(r: SortRule, enabled: Boolean) = viewModelScope.launch { c.db.sortRules().setEnabled(r.id, enabled) }
+    fun setAutoSort(v: Boolean) = viewModelScope.launch { c.settings.setAutoSort(v) }
 }
 
 class SearchViewModel : ViewModel() {

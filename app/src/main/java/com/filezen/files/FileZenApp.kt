@@ -14,7 +14,7 @@ class AppContainer(app: FileZenApp) {
     val settings by lazy { SettingsStore(app) }
     val fileEngine by lazy { FileEngine() }
     val trash by lazy { TrashManager(app, db) }
-    val inbox by lazy { InboxRepository(app, db, settings) }
+    val inbox by lazy { InboxRepository(app, db, settings, fileEngine) }
     val ops by lazy { OperationRunner(app, fileEngine, trash, db) }
     val billing by lazy { BillingManager(app, settings) }
 }

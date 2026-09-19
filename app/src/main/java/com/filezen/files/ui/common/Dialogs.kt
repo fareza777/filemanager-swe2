@@ -1,19 +1,25 @@
 package com.filezen.files.ui.common
 
+import android.os.Environment
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Folder
-import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.filezen.files.data.db.Favorite
+import java.io.File
 
 @Composable
 fun TextInputDialog(
@@ -63,6 +69,116 @@ fun ConfirmDialog(
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+}
+
+/**
+ * Folder picker sheet: browse the filesystem, descend into directories,
+ * create a new folder, and confirm a destination path. Used by the sort-rule
+ * editor and any "move to…" flow that needs an arbitrary folder.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun FolderPickerSheet(
+    startPath: String = Environment.getExternalStorageDirectory().absolutePath,
+    onPick: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var dir by remember { mutableStateOf(File(startPath).let { if (it.isDirectory) it else Environment.getExternalStorageDirectory() }) }
+    var subdirs by remember { mutableStateOf<List<File>>(emptyList()) }
+    var newFolder by remember { mutableStateOf(false) }
+
+    LaunchedEffect(dir) {
+        subdirs = runCatching {
+            dir.listFiles()?.filter { it.isDirectory && !it.isHidden }?.sortedBy { it.name.lowercase() }
+        }.getOrNull() ?: emptyList()
+    }
+
+    val shortcuts = remember {
+        listOf(
+            Environment.DIRECTORY_DOWNLOADS, Environment.DIRECTORY_DOCUMENTS,
+            Environment.DIRECTORY_PICTURES, Environment.DIRECTORY_DCIM,
+            Environment.DIRECTORY_MUSIC, Environment.DIRECTORY_MOVIES,
+        ).map { Environment.getExternalStoragePublicDirectory(it) }.filter { it.exists() || it.parentFile?.exists() == true }
+    }
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Choose folder", style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold)
+                Text(dir.absolutePath, style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            IconButton(onClick = { dir.parentFile?.let { if (it.canRead()) dir = it } }) {
+                Icon(Icons.Rounded.ArrowUpward, "Up")
+            }
+            IconButton(onClick = { newFolder = true }) {
+                Icon(Icons.Rounded.CreateNewFolder, "New folder")
+            }
+        }
+
+        Row(
+            Modifier.horizontalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            shortcuts.forEach { f ->
+                AssistChip(
+                    onClick = { dir = f },
+                    label = { Text(f.name) },
+                    leadingIcon = { Icon(Icons.Rounded.Folder, null, Modifier.size(16.dp)) },
+                )
+            }
+        }
+
+        HorizontalDivider(Modifier.padding(vertical = 4.dp))
+
+        LazyColumn(Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(max = 320.dp)) {
+            if (subdirs.isEmpty()) {
+                item {
+                    Text("No subfolders here",
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            items(subdirs, key = { it.absolutePath }) { d ->
+                ListItem(
+                    headlineContent = { Text(d.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    leadingContent = {
+                        Icon(Icons.Rounded.Folder, null,
+                            tint = MaterialTheme.colorScheme.primary)
+                    },
+                    trailingContent = { Icon(Icons.Rounded.ChevronRight, null) },
+                    modifier = Modifier.clickable { dir = d },
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                )
+            }
+        }
+
+        Button(
+            onClick = { onPick(dir.absolutePath) },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+            shape = RoundedCornerShape(14.dp),
+        ) { Text("Use this folder") }
+        Spacer(Modifier.height(28.dp))
+    }
+
+    if (newFolder) {
+        TextInputDialog(
+            title = "New folder", hint = "Folder name",
+            onConfirm = { name ->
+                File(dir, name).mkdirs()
+                File(dir, name).takeIf { it.isDirectory }?.let { dir = it }
+                newFolder = false
+            },
+            onDismiss = { newFolder = false },
+        )
+    }
 }
 
 /**

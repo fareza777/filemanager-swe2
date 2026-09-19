@@ -29,6 +29,7 @@ class SettingsStore(private val ctx: Context) {
         val SAF_ROOTS = stringSetPreferencesKey("saf_roots")
         val AD_FREE = booleanPreferencesKey("ad_free")
         val SHOW_HIDDEN = booleanPreferencesKey("show_hidden")
+        val AUTO_SORT = booleanPreferencesKey("auto_sort")
         val RECENT_QUERY = stringPreferencesKey("recent_queries")
         val SCROLL_PREFIX = "scroll_" // + sanitized path -> "index,offset"
     }
@@ -51,6 +52,7 @@ class SettingsStore(private val ctx: Context) {
     val safRoots: Flow<Set<String>> = ctx.zenPrefs.data.map { it[K.SAF_ROOTS] ?: emptySet() }
     val adFree: Flow<Boolean> = ctx.zenPrefs.data.map { it[K.AD_FREE] ?: false }
     val showHidden: Flow<Boolean> = ctx.zenPrefs.data.map { it[K.SHOW_HIDDEN] ?: false }
+    val autoSort: Flow<Boolean> = ctx.zenPrefs.data.map { it[K.AUTO_SORT] ?: false }
     val recentQueries: Flow<List<String>> = ctx.zenPrefs.data.map {
         (it[K.RECENT_QUERY] ?: "").split("\n").filter { s -> s.isNotBlank() }.take(10)
     }
@@ -67,6 +69,7 @@ class SettingsStore(private val ctx: Context) {
     suspend fun setSafRoots(v: Set<String>) = ctx.zenPrefs.edit { it[K.SAF_ROOTS] = v }
     suspend fun setAdFree(v: Boolean) = ctx.zenPrefs.edit { it[K.AD_FREE] = v }
     suspend fun setShowHidden(v: Boolean) = ctx.zenPrefs.edit { it[K.SHOW_HIDDEN] = v }
+    suspend fun setAutoSort(v: Boolean) = ctx.zenPrefs.edit { it[K.AUTO_SORT] = v }
 
     suspend fun addRecentQuery(q: String) {
         ctx.zenPrefs.edit {

@@ -2,8 +2,13 @@ package com.filezen.files.core.inbox
 
 import android.content.Context
 import android.os.Environment
+import com.filezen.files.core.fileops.ConflictPolicy
+import com.filezen.files.core.fileops.FileEngine
+import com.filezen.files.core.fileops.ItemStatus
+import com.filezen.files.core.fileops.SortRuleEngine
 import com.filezen.files.core.model.FileEntry
 import com.filezen.files.data.db.InboxItem
+import com.filezen.files.data.db.OperationRecord
 import com.filezen.files.data.db.ZenDatabase
 import com.filezen.files.data.prefs.SettingsStore
 import kotlinx.coroutines.Dispatchers
@@ -23,6 +28,7 @@ class InboxRepository(
     private val ctx: Context,
     private val db: ZenDatabase,
     private val settings: SettingsStore,
+    private val fileEngine: FileEngine,
 ) {
     val items: Flow<List<InboxItem>> get() = db.inbox().all()
     val untidy: Flow<List<InboxItem>> get() = db.inbox().untidy()
@@ -79,10 +85,49 @@ class InboxRepository(
                 }
             }
         }
-        if (newItems.isNotEmpty()) db.inbox().insertAll(newItems)
+        // Auto-sort: immediately move newly seen files that match an enabled
+        // rule (e.g. "*.pdf → Documents/PDFs"). Moved items are recorded as
+        // tidy at their destination, so they never show up as untidy.
+        val finalItems = if (newItems.isEmpty()) newItems else autoSort(newItems)
+        if (finalItems.isNotEmpty()) db.inbox().insertAll(finalItems)
         val gone = known.filter { it !in found }
             .filter { p -> p !in tidyPaths || !File(p).exists() }
         if (gone.isNotEmpty()) db.inbox().remove(gone)
+    }
+
+    /**
+     * Applies enabled sort rules to freshly detected inbox files. Files whose
+     * rule target can't be written are left untidy in place. Each successful
+     * move is logged in the operation history as AUTO_SORT.
+     */
+    private suspend fun autoSort(items: List<InboxItem>): List<InboxItem> {
+        if (!settings.autoSort.first()) return items
+        val rules = db.sortRules().enabled()
+        if (rules.isEmpty()) return items
+        val out = ArrayList<InboxItem>(items.size)
+        for (item in items) {
+            val e = FileEntry.from(File(item.path))
+            val rule = rules.firstOrNull { SortRuleEngine.matches(it, e) }
+            val targetDir = rule?.let { File(it.targetPath) }
+            if (rule == null || targetDir == null ||
+                targetDir.absolutePath == File(item.path).parentFile?.absolutePath) {
+                out += item; continue
+            }
+            val summary = fileEngine.move(
+                listOf(File(item.path)), targetDir, ConflictPolicy.KEEP_BOTH)
+            val moved = summary.results.firstOrNull()
+            if (moved != null && moved.status == ItemStatus.DONE && moved.target != null) {
+                val dst = File(moved.target)
+                out += item.copy(path = dst.absolutePath, name = dst.name, tidy = true)
+                db.operations().insert(OperationRecord(
+                    kind = "AUTO_SORT", sources = item.path, targetDir = targetDir.absolutePath,
+                    status = "OK", detail = SortRuleEngine.describe(rule),
+                    itemCount = 1, timestamp = System.currentTimeMillis()))
+            } else {
+                out += item
+            }
+        }
+        return out
     }
 
     suspend fun markTidy(paths: List<String>, tidy: Boolean = true) {
