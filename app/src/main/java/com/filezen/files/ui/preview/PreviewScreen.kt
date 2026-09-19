@@ -1,5 +1,5 @@
+@file:OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class)
 package com.filezen.files.ui.preview
-
 import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
@@ -32,7 +32,6 @@ import com.filezen.files.ui.common.TextInputDialog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PreviewScreen(nav: NavController, path: String) {
@@ -41,7 +40,6 @@ fun PreviewScreen(nav: NavController, path: String) {
     val entry = remember(path) { FileEntry.from(file) }
     var showOpenWith by remember { mutableStateOf(false) }
     var showInfo by remember { mutableStateOf(false) }
-
     Scaffold(
         topBar = {
             TopAppBar(
@@ -71,7 +69,6 @@ fun PreviewScreen(nav: NavController, path: String) {
             }
         }
     }
-
     if (showInfo) {
         AlertDialog(
             onDismissRequest = { showInfo = false },
@@ -89,7 +86,6 @@ fun PreviewScreen(nav: NavController, path: String) {
         )
     }
 }
-
 @Composable
 private fun InfoRow(k: String, v: String) {
     Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
@@ -98,19 +94,27 @@ private fun InfoRow(k: String, v: String) {
         Text(v, style = MaterialTheme.typography.bodySmall)
     }
 }
-
 @Composable
 private fun ImagePreview(file: File) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        var m: Modifier = Modifier.fillMaxSize()
+        val sharedScope = com.filezen.files.ui.common.LocalSharedScope.current
+        val animScope = com.filezen.files.ui.common.LocalAnimScope.current
+        if (sharedScope != null && animScope != null) {
+            m = with(sharedScope) {
+                m.sharedElement(
+                    sharedScope.rememberSharedContentState("img:" + file.absolutePath),
+                    animScope)
+            }
+        }
         AsyncImage(
             model = ImageRequest.Builder(LocalContext.current).data(file).crossfade(true).build(),
             contentDescription = file.name,
             contentScale = ContentScale.Fit,
-            modifier = Modifier.fillMaxSize(),
+            modifier = m,
         )
     }
 }
-
 @Composable
 private fun TextPreview(file: File) {
     var text by remember { mutableStateOf<String?>(null) }
@@ -133,7 +137,6 @@ private fun TextPreview(file: File) {
         }
     }
 }
-
 @Composable
 private fun PdfPreview(file: File) {
     var pages by remember { mutableStateOf<List<Bitmap>>(emptyList()) }
@@ -171,7 +174,6 @@ private fun PdfPreview(file: File) {
         }
     }
 }
-
 @Composable
 private fun MediaPlayer(e: FileEntry) {
     val ctx = LocalContext.current
@@ -205,7 +207,6 @@ private fun MediaPlayer(e: FileEntry) {
         }
     }
 }
-
 @Composable
 private fun GenericPreviewCard(e: FileEntry) {
     val ctx = LocalContext.current
@@ -225,7 +226,6 @@ private fun GenericPreviewCard(e: FileEntry) {
         }
     }
 }
-
 @Composable
 private fun ThumbBoxBig(e: FileEntry) {
     com.filezen.files.ui.common.ThumbBox(e, 96.dp)

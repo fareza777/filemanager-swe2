@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -55,12 +56,12 @@ fun SettingsScreen(nav: NavController, appVm: AppViewModel, inboxVm: InboxViewMo
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())) {
 
-            Text("Appearance", Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            Text(stringResource(com.filezen.files.R.string.settings_appearance), Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
                 style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp)) {
                 Column(Modifier.padding(18.dp)) {
-                    Text("Theme", fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(com.filezen.files.R.string.settings_theme), fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(10.dp))
                     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                         val themeIcons = listOf(
@@ -78,7 +79,7 @@ fun SettingsScreen(nav: NavController, appVm: AppViewModel, inboxVm: InboxViewMo
                         }
                     }
                     Spacer(Modifier.height(16.dp))
-                    Text("Accent colour", fontWeight = FontWeight.Medium)
+                    Text(stringResource(com.filezen.files.R.string.settings_accent), fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(8.dp))
                     Row(
                         Modifier.fillMaxWidth(),
@@ -156,7 +157,7 @@ fun SettingsScreen(nav: NavController, appVm: AppViewModel, inboxVm: InboxViewMo
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text("Pitch black dark theme")
+                            Text(stringResource(com.filezen.files.R.string.settings_amoled))
                             Text("Saves battery on OLED screens",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -166,7 +167,7 @@ fun SettingsScreen(nav: NavController, appVm: AppViewModel, inboxVm: InboxViewMo
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text("Folder sizes")
+                            Text(stringResource(com.filezen.files.R.string.settings_folder_sizes))
                             Text("Show each folder's total size in the list",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)

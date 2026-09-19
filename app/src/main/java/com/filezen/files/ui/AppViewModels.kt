@@ -198,6 +198,7 @@ class BrowseViewModel : ViewModel() {
     val sortAsc = c.settings.sortAsc.stateIn(viewModelScope, SharingStarted.Eagerly, true)
     val showHidden = c.settings.showHidden.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val folderSizes = c.settings.folderSizes.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    val folderColors = c.settings.folderColors.stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
     private val _dirSizes = MutableStateFlow<Map<String, Long>>(emptyMap())
     val dirSizes: StateFlow<Map<String, Long>> = _dirSizes
     val safRoots = c.settings.safRoots.stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())

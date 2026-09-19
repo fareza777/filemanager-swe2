@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -115,7 +116,7 @@ fun HomeScreen(nav: NavController, appVm: AppViewModel, vm: HomeViewModel = view
                 ) {
                     Icon(Icons.Rounded.Search, null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(14.dp))
-                    Text("Search files…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(com.filezen.files.R.string.search_hint), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             }

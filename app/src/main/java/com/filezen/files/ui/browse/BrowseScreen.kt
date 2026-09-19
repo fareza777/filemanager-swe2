@@ -1,6 +1,8 @@
 package com.filezen.files.ui.browse
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.*
@@ -12,6 +14,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -52,6 +56,8 @@ fun BrowseScreen(
     val volumes by vm.volumes.collectAsState()
     val loading by vm.loading.collectAsState()
     val dirSizes by vm.dirSizes.collectAsState()
+    val folderColors by vm.folderColors.collectAsState()
+    var colorTarget by remember { mutableStateOf<FileEntry?>(null) }
     val clipboard by appVm.clipboard.collectAsState()
     val favorites by appVm.favorites.collectAsState()
     val basket by appVm.basket.collectAsState()
@@ -68,6 +74,7 @@ fun BrowseScreen(
     var showRulesPreview by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val ctx = androidx.compose.ui.platform.LocalContext.current
+    var gridCols by remember { mutableStateOf(0) } // 0 = adaptive; pinch sets 2..6
 
     // SAF picker: grant FileZen access to an SD card / USB volume root.
     val safLauncher = rememberLauncherForActivityResult(
@@ -365,12 +372,35 @@ fun BrowseScreen(
             } else if (entries.isEmpty() && !loading) {
                 EmptyState(Icons.Rounded.FolderOpen, "Empty folder", "Nothing to see here yet.")
             } else if (viewMode == ViewMode.LIST) {
-                LazyColumn(Modifier.fillMaxSize(), state = listState) {
+                // Drag-select: while a selection is active, dragging vertically
+                // over rows keeps adding them.
+                var lastDragIdx by remember { mutableStateOf(-1) }
+                LazyColumn(
+                    Modifier.fillMaxSize().pointerInput(selection.isEmpty()) {
+                        if (selection.isEmpty()) return@pointerInput
+                        detectDragGestures(
+                            onDragStart = { lastDragIdx = -1 },
+                        ) { change, _ ->
+                            val y = change.position.y
+                            val info = listState.layoutInfo.visibleItemsInfo.firstOrNull {
+                                y >= it.offset && y < it.offset + it.size
+                            } ?: return@detectDragGestures
+                            val idx = info.index
+                            if (idx != lastDragIdx && idx < entries.size) {
+                                lastDragIdx = idx
+                                val p = entries[idx].path
+                                if (p !in selection) vm.toggleSelect(p)
+                            }
+                        }
+                    },
+                    state = listState,
+                ) {
                     itemsIndexed(entries, key = { _, e -> e.path }) { _, e ->
                         FileRow(
                             e = e,
                             selected = e.path in selection,
                             dirSize = dirSizes[e.path],
+                            folderColor = folderColors[e.path]?.let { Color(it) },
                             onClick = { openEntry(e) },
                             onLongClick = { vm.longPressSelect(e.path) },
                             trailing = {
@@ -378,6 +408,7 @@ fun BrowseScreen(
                                     e = e,
                                     onOpen = { openEntry(e) },
                                     onRename = { renameTarget = e },
+                                    onColorTag = if (e.isDirectory) ({ colorTarget = e }) else null,
                                     onZip = { appVm.opZip(listOf(e.path), File(path)) },
                                     onExtract = { extractTarget = e },
                                     onTrash = { deleteConfirm = listOf(e.path) },
@@ -397,10 +428,19 @@ fun BrowseScreen(
                     item { Spacer(Modifier.height(96.dp)) }
                 }
             } else {
+                var pinchZoom by remember { mutableStateOf(1f) }
                 LazyVerticalGrid(
                     state = gridState,
-                    columns = GridCells.Adaptive(110.dp),
-                    modifier = Modifier.fillMaxSize(),
+                    columns = if (gridCols > 0) GridCells.Fixed(gridCols) else GridCells.Adaptive(110.dp),
+                    modifier = Modifier.fillMaxSize()
+                        .pointerInput(Unit) {
+                            detectTransformGestures { _, _, zoom, _ ->
+                                pinchZoom *= zoom
+                                if (pinchZoom > 1.18f) { gridCols = (if (gridCols==0) 4 else gridCols) - 1; pinchZoom = 1f }
+                                else if (pinchZoom < 0.85f) { gridCols = (if (gridCols==0) 3 else gridCols) + 1; pinchZoom = 1f }
+                                gridCols = gridCols.coerceIn(0, 6)
+                            }
+                        },
                     contentPadding = PaddingValues(12.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -410,6 +450,7 @@ fun BrowseScreen(
                         FileCard(
                             e = e,
                             selected = e.path in selection,
+                            folderColor = folderColors[e.path]?.let { Color(it) },
                             onClick = { openEntry(e) },
                             onLongClick = { vm.longPressSelect(e.path) },
                         )
@@ -432,6 +473,44 @@ fun BrowseScreen(
             scope.launch { FileZenEngine.rename(File(e.path), newName); vm.refresh() }
             renameTarget = null
         }, onDismiss = { renameTarget = null })
+    }
+    colorTarget?.let { e ->
+        AlertDialog(
+            onDismissRequest = { colorTarget = null },
+            title = { Text("Folder colour") },
+            text = {
+                Column {
+                    Text(e.name, style = MaterialTheme.typography.bodySmall)
+                    Spacer(Modifier.height(12.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        listOf(0xFFF5B94E, 0xFF58A6FF, 0xFF57AB5A, 0xFFEF5B5B,
+                               0xFFBC8CF2, 0xFF8B949E).forEach { col ->
+                            Surface(
+                                shape = androidx.compose.foundation.shape.CircleShape,
+                                color = Color(col),
+                                modifier = Modifier.size(40.dp)
+                                    .clickable {
+                                        scope.launch {
+                                            com.filezen.files.FileZenApp.c.settings
+                                                .setFolderColor(e.path, col.toInt())
+                                        }
+                                        colorTarget = null
+                                    },
+                            ) {}
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = {
+                    scope.launch {
+                        com.filezen.files.FileZenApp.c.settings.setFolderColor(e.path, null)
+                    }
+                    colorTarget = null
+                }) { Text("Clear") }
+            },
+        )
     }
     conflictFile?.let { fname ->
         AlertDialog(
@@ -529,6 +608,7 @@ private fun OverflowMenu(
     onBasket: () -> Unit,
     onConvert: () -> Unit,
     onCompress: () -> Unit,
+    onColorTag: (() -> Unit)? = null,
 ) {
     var open by remember { mutableStateOf(false) }
     val ctx = androidx.compose.ui.platform.LocalContext.current

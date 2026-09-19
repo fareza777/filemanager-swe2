@@ -1,4 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">FileZen</string>
+    <string name="nav_home">Home</string>
+    <string name="nav_inbox">Inbox</string>
+    <string name="nav_browse">Browse</string>
+    <string name="nav_storage">Storage</string>
+    <string name="search_hint">Search files…</string>
+    <string name="home_recent">Recent</string>
+    <string name="home_see_all">See all</string>
+    <string name="home_favourites">Favourites</string>
+    <string name="home_optimise">Optimise</string>
+    <string name="inbox_tidy">Tidy up</string>
+    <string name="inbox_mark_tidy">Mark tidy</string>
+    <string name="action_copy">Copy</string>
+    <string name="action_move">Move</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_share">Share</string>
+    <string name="action_rename">Rename</string>
+    <string name="action_undo">Undo</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_confirm">Confirm</string>
+    <string name="trash_title">Move to trash?</string>
+    <string name="settings_appearance">Appearance</string>
+    <string name="settings_theme">Theme</string>
+    <string name="settings_accent">Accent colour</string>
+    <string name="settings_folder_sizes">Folder sizes</string>
+    <string name="settings_amoled">Pitch black dark theme</string>
 </resources>

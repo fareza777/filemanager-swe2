@@ -1,5 +1,5 @@
+@file:OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class, androidx.compose.material3.ExperimentalMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 package com.filezen.files
-
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import com.filezen.files.core.fileops.OpKind
+import androidx.compose.ui.res.stringResource
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -36,7 +37,6 @@ import com.filezen.files.ui.search.SearchScreen
 import com.filezen.files.ui.settings.SettingsScreen
 import com.filezen.files.ui.storage.StorageScreen
 import com.filezen.files.ui.theme.FileZenTheme
-
 object Routes {
     const val HOME = "home"
     const val INBOX = "inbox"
@@ -51,11 +51,9 @@ object Routes {
     const val HISTORY = "history"
     const val RECENT = "recent"
     const val CALENDAR = "calendar"
-
     fun folder(path: String) = "folder/${Uri.encode(path)}"
     fun preview(path: String) = "preview/${Uri.encode(path)}"
 }
-
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -71,7 +69,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
-
 @Composable
 fun FileZenApp_(appVm: AppViewModel) {
     var hasAccess by remember { mutableStateOf(hasStorageAccess()) }
@@ -83,19 +80,16 @@ fun FileZenApp_(appVm: AppViewModel) {
         lifecycle.addObserver(obs)
         onDispose { lifecycle.removeObserver(obs) }
     }
-
     if (!hasAccess) {
         Surface(Modifier.fillMaxSize()) { PermissionGate() }
         return
     }
-
     val nav = rememberNavController()
     val runningOp by appVm.runningOp.collectAsState()
     val snack = remember { SnackbarHostState() }
     val lastSummary by appVm.lastSummary.collectAsState()
     val backStack by nav.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route
-
     // On a bottom-nav tab, Back returns to Home instead of exiting the app.
     androidx.activity.compose.BackHandler(
         enabled = currentRoute == null ||
@@ -108,7 +102,6 @@ fun FileZenApp_(appVm: AppViewModel) {
             }
         }
     }
-
     LaunchedEffect(lastSummary) {
         lastSummary?.let { s ->
             val msg = when {
@@ -126,7 +119,6 @@ fun FileZenApp_(appVm: AppViewModel) {
             appVm.dismissSummary()
         }
     }
-
     Scaffold(
         snackbarHost = { SnackbarHost(snack) },
         bottomBar = {
@@ -138,10 +130,10 @@ fun FileZenApp_(appVm: AppViewModel) {
                 ) {
                     val route = currentRoute
                     val items = listOf(
-                        Triple(Routes.HOME, "Home", Icons.Rounded.Home),
-                        Triple(Routes.INBOX, "Inbox", Icons.Rounded.Inbox),
-                        Triple(Routes.BROWSE, "Browse", Icons.Rounded.FolderCopy),
-                        Triple(Routes.STORAGE, "Storage", Icons.Rounded.DonutLarge),
+                        Triple(Routes.HOME, stringResource(R.string.nav_home), Icons.Rounded.Home),
+                        Triple(Routes.INBOX, stringResource(R.string.nav_inbox), Icons.Rounded.Inbox),
+                        Triple(Routes.BROWSE, stringResource(R.string.nav_browse), Icons.Rounded.FolderCopy),
+                        Triple(Routes.STORAGE, stringResource(R.string.nav_storage), Icons.Rounded.DonutLarge),
                     )
                     items.forEach { (r, label, icon) ->
                         ZenNavItem(
@@ -161,6 +153,10 @@ fun FileZenApp_(appVm: AppViewModel) {
             }
         },
     ) { padding ->
+        androidx.compose.animation.SharedTransitionLayout {
+        CompositionLocalProvider(
+            com.filezen.files.ui.common.LocalSharedScope provides this@SharedTransitionLayout
+        ) {
         NavHost(
             navController = nav,
             startDestination = Routes.HOME,
@@ -186,13 +182,17 @@ fun FileZenApp_(appVm: AppViewModel) {
         ) {
             composable(Routes.HOME) { HomeScreen(nav, appVm) }
             composable(Routes.INBOX) { InboxScreen(nav, appVm) }
-            composable(Routes.BROWSE) { BrowseScreen(nav, appVm, null) }
+            composable(Routes.BROWSE) { CompositionLocalProvider(
+                com.filezen.files.ui.common.LocalAnimScope provides this) { BrowseScreen(nav, appVm, null) } }
             composable(
                 Routes.FOLDER,
                 arguments = listOf(navArgument("path") { type = NavType.StringType }),
             ) { back ->
                 val p = Uri.decode(back.arguments?.getString("path") ?: "/")
-                BrowseScreen(nav, appVm, p)
+                CompositionLocalProvider(
+                    com.filezen.files.ui.common.LocalAnimScope provides this) {
+                    BrowseScreen(nav, appVm, p)
+                }
             }
             composable(
                 Routes.SEARCH + "?type={type}",
@@ -206,7 +206,10 @@ fun FileZenApp_(appVm: AppViewModel) {
                 Routes.PREVIEW,
                 arguments = listOf(navArgument("path") { type = NavType.StringType }),
             ) { back ->
-                PreviewScreen(nav, Uri.decode(back.arguments?.getString("path") ?: ""))
+                CompositionLocalProvider(
+                    com.filezen.files.ui.common.LocalAnimScope provides this) {
+                    PreviewScreen(nav, Uri.decode(back.arguments?.getString("path") ?: ""))
+                }
             }
             composable(Routes.SETTINGS) { SettingsScreen(nav, appVm) }
             composable(Routes.STORAGE) { StorageScreen(nav, appVm) }
@@ -214,11 +217,13 @@ fun FileZenApp_(appVm: AppViewModel) {
             composable(Routes.RULES) { SortRulesScreen(nav, appVm) }
             composable(Routes.HISTORY) { HistoryScreen(nav) }
             composable(Routes.CALENDAR) { CalendarScreen(nav, appVm) }
-            composable(Routes.RECENT) { RecentScreen(nav, appVm) }
+            composable(Routes.RECENT) { CompositionLocalProvider(
+                com.filezen.files.ui.common.LocalAnimScope provides this) { RecentScreen(nav, appVm) } }
+        }
+        }
         }
     }
 }
-
 /**
  * Bottom-nav item with a spring-loaded pill that sweeps in behind the icon,
  * an icon that briefly pops bigger, and a label that firms up when active.
@@ -242,7 +247,6 @@ private fun androidx.compose.foundation.layout.RowScope.ZenNavItem(
         label = "pillS")
     val iconTint = if (selected) MaterialTheme.colorScheme.primary
         else MaterialTheme.colorScheme.onSurfaceVariant
-
     Column(
         modifier = Modifier
             .weight(1f)

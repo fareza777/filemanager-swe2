@@ -1,5 +1,5 @@
+@file:OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class)
 package com.filezen.files.ui.common
-
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -22,23 +22,23 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.filezen.files.core.model.*
 import java.io.File
-
 fun iconFor(e: FileEntry): ImageVector = when (e.type) {
     FileType.FOLDER -> Icons.Rounded.Folder
     FileType.IMAGE -> Icons.Rounded.Image
     FileType.VIDEO -> Icons.Rounded.Movie
-    FileType.AUDIO -> Icons.Rounded.MusicNote
-    FileType.PDF, FileType.DOCUMENT -> Icons.Rounded.Description
-    FileType.TEXT -> Icons.Rounded.TextSnippet
+    FileType.AUDIO -> Icons.Rounded.AudioFile
+    FileType.PDF -> Icons.Rounded.PictureAsPdf
+    FileType.DOCUMENT -> Icons.Rounded.Article
+    FileType.TEXT -> Icons.Rounded.Terminal
     FileType.APK -> Icons.Rounded.Android
     FileType.ARCHIVE -> Icons.Rounded.FolderZip
     FileType.OTHER -> Icons.Rounded.InsertDriveFile
 }
-
 fun tintFor(e: FileEntry): Color = when (e.type) {
     FileType.FOLDER -> Color(0xFFF5B94E)
     FileType.IMAGE -> Color(0xFF58A6FF)
@@ -51,19 +51,20 @@ fun tintFor(e: FileEntry): Color = when (e.type) {
     FileType.ARCHIVE -> Color(0xFFDDB892)
     FileType.OTHER -> Color(0xFF8B949E)
 }
-
 @Composable
-fun ThumbBox(e: FileEntry, size: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier) {
+fun ThumbBox(e: FileEntry, size: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier,
+             folderTint: Color? = null) {
     val shape = RoundedCornerShape(if (e.isDirectory) 12.dp else 14.dp)
+    val tint = folderTint ?: tintFor(e)
     Box(
         modifier = modifier
             .size(size)
             .clip(shape)
-            .background(tintFor(e).copy(alpha = 0.16f)),
+            .background(tint.copy(alpha = 0.16f)),
         contentAlignment = Alignment.Center,
     ) {
         // Icon doubles as the placeholder while an image thumbnail loads.
-        Icon(iconFor(e), contentDescription = null, tint = tintFor(e),
+        Icon(iconFor(e), contentDescription = null, tint = tint,
             modifier = Modifier.size(size * 0.52f))
         if (e.type == FileType.IMAGE || e.type == FileType.VIDEO) {
             val req = ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
@@ -73,16 +74,43 @@ fun ThumbBox(e: FileEntry, size: androidx.compose.ui.unit.Dp, modifier: Modifier
             // Coil can't decode video frames by itself — wire the video decoder.
             if (e.type == FileType.VIDEO)
                 req.decoderFactory(coil.decode.VideoFrameDecoder.Factory())
+            var imgMod: Modifier = Modifier.size(size).clip(shape)
+            if (e.type == FileType.IMAGE) {
+                // Shared element into the full-screen preview when the scope is available.
+                val sharedScope = LocalSharedScope.current
+                val animScope = LocalAnimScope.current
+                if (sharedScope != null && animScope != null) {
+                    imgMod = with(sharedScope) {
+                        imgMod.sharedElement(
+                            sharedScope.rememberSharedContentState("img:" + e.path),
+                            animScope)
+                    }
+                }
+            }
             AsyncImage(
                 model = req.build(),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.size(size).clip(shape),
+                modifier = imgMod,
             )
+        }
+        // Extension badge so doc/code/apk types are identifiable at a glance.
+        if (!e.isDirectory && e.type !in setOf(FileType.IMAGE, FileType.VIDEO) && size >= 40.dp) {
+            val ext = e.extension.take(4).uppercase()
+            if (ext.isNotEmpty()) {
+                Surface(
+                    color = tint,
+                    shape = RoundedCornerShape(5.dp),
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(2.dp),
+                ) {
+                    Text(ext, Modifier.padding(horizontal = 3.dp, vertical = 0.dp),
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp),
+                        color = Color.White)
+                }
+            }
         }
     }
 }
-
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun FileRow(
@@ -93,6 +121,7 @@ fun FileRow(
     modifier: Modifier = Modifier,
     trailing: (@Composable () -> Unit)? = null,
     dirSize: Long? = null,
+    folderColor: Color? = null,
 ) {
     val bg = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
         else Color.Transparent
@@ -105,7 +134,7 @@ fun FileRow(
             .padding(horizontal = 10.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ThumbBox(e, 46.dp)
+        ThumbBox(e, 46.dp, folderTint = folderColor)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(e.name, style = MaterialTheme.typography.bodyLarge,
@@ -124,10 +153,10 @@ fun FileRow(
         }
     }
 }
-
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun FileCard(e: FileEntry, selected: Boolean, onClick: () -> Unit, onLongClick: () -> Unit) {
+fun FileCard(e: FileEntry, selected: Boolean, onClick: () -> Unit, onLongClick: () -> Unit,
+             folderColor: Color? = null) {
     val bg = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
         else MaterialTheme.colorScheme.surfaceContainerLow
     Card(
@@ -143,7 +172,7 @@ fun FileCard(e: FileEntry, selected: Boolean, onClick: () -> Unit, onLongClick: 
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                ThumbBox(e, 68.dp)
+                ThumbBox(e, 68.dp, folderTint = folderColor)
             }
             Text(e.name, style = MaterialTheme.typography.bodySmall,
                 maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -153,7 +182,6 @@ fun FileCard(e: FileEntry, selected: Boolean, onClick: () -> Unit, onLongClick: 
         }
     }
 }
-
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun EmptyState(icon: ImageVector, title: String, subtitle: String, modifier: Modifier = Modifier) {
@@ -180,7 +208,6 @@ fun EmptyState(icon: ImageVector, title: String, subtitle: String, modifier: Mod
             textAlign = androidx.compose.ui.text.style.TextAlign.Center)
     }
 }
-
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun Breadcrumb(path: String, onNavigate: (String) -> Unit) {
@@ -229,7 +256,6 @@ fun Breadcrumb(path: String, onNavigate: (String) -> Unit) {
         }
     }
 }
-
 @Composable
 fun SectionHeader(text: String, action: (@Composable () -> Unit)? = null) {
     Row(
@@ -241,7 +267,6 @@ fun SectionHeader(text: String, action: (@Composable () -> Unit)? = null) {
         action?.invoke()
     }
 }
-
 @Composable
 fun ConflictDialog(
     fileName: String,
@@ -260,9 +285,7 @@ fun ConflictDialog(
         },
     )
 }
-
 enum class ConflictChoice { OVERWRITE, KEEP_BOTH, SKIP }
-
 @Composable
 fun OpProgressCard(current: com.filezen.files.core.fileops.RunningOp?, onCancel: () -> Unit) {
     current ?: return
@@ -293,10 +316,6 @@ fun OpProgressCard(current: com.filezen.files.core.fileops.RunningOp?, onCancel:
         }
     }
 }
-
-
-
-
 @Composable
 fun SkeletonRow() {
     val shimmer = rememberInfiniteTransition(label = "sk")
