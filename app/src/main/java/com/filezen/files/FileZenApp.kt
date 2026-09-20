@@ -19,6 +19,7 @@ class AppContainer(app: FileZenApp) {
     val ops by lazy { OperationRunner(app, fileEngine, trash, db) }
     val billing by lazy { BillingManager(app, settings) }
     val fileIndex by lazy { com.filezen.files.core.scan.FileIndex(db) }
+    val transfer by lazy { com.filezen.files.core.transfer.TransferServer() }
 }
 
 class FileZenApp : Application() {

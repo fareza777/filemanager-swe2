@@ -223,6 +223,14 @@ fun StorageScreen(nav: NavController, appVm: AppViewModel, vm: StorageViewModel 
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     )
                     ListItem(
+                        headlineContent = { Text("Transfer to PC") },
+                        supportingContent = { Text("Upload & download over Wi-Fi from any browser") },
+                        leadingContent = { Icon(Icons.Rounded.Phonelink, null) },
+                        trailingContent = { Icon(Icons.Rounded.ChevronRight, null) },
+                        modifier = Modifier.clickable { nav.navigate(Routes.TRANSFER) },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    )
+                    ListItem(
                         headlineContent = { Text("Auto-sort new files") },
                         supportingContent = {
                             Text(if (autoSort) "On — files matching a rule move automatically"

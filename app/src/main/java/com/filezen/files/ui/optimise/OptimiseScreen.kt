@@ -1,6 +1,13 @@
 package com.filezen.files.ui.optimise
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -16,12 +23,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.filezen.files.FileZenApp
 import com.filezen.files.core.convert.ConvertEngine
+import com.filezen.files.core.fileops.RunningOp
 import com.filezen.files.core.model.FileEntry
 import com.filezen.files.core.model.FileType
 import com.filezen.files.core.model.formatSize
@@ -79,6 +90,10 @@ fun OptimiseScreen(nav: NavController, appVm: AppViewModel) {
     var confirmPurge by remember { mutableStateOf(false) }
     var convertPick by remember { mutableStateOf(false) }
     var compressPick by remember { mutableStateOf(false) }
+    var showLargest by remember { mutableStateOf(false) }
+
+    // Live operation state — drives the animated "working" card.
+    val runningOp by c.ops.current.collectAsState()
 
     Scaffold(
         topBar = {
@@ -126,6 +141,11 @@ fun OptimiseScreen(nav: NavController, appVm: AppViewModel) {
                             style = MaterialTheme.typography.bodyMedium)
                     }
                 }
+            }
+
+            // Animated progress while an optimise operation runs
+            runningOp?.let { op ->
+                item(key = "working") { WorkingCard(op) { c.ops.cancel() } }
             }
 
             // — Trash —
@@ -178,17 +198,17 @@ fun OptimiseScreen(nav: NavController, appVm: AppViewModel) {
                 }
             }
 
-            // — Large files —
+            // — Large files — collapsed until tapped so the page stays tidy
             if (largest.isNotEmpty()) {
                 item {
                     OptCard(
                         icon = Icons.Rounded.FolderZip, tint = Color(0xFFF6B77E),
                         title = "Largest files",
                         sub = "Top ${largest.size} files by size — trash what you don't need",
-                        actionLabel = null,
-                    ) { }
+                        actionLabel = if (showLargest) "Hide" else "Show",
+                    ) { showLargest = !showLargest }
                 }
-                items(largest) { e ->
+                if (showLargest) items(largest) { e ->
                     Row(
                         Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
                             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
@@ -265,6 +285,58 @@ fun OptimiseScreen(nav: NavController, appVm: AppViewModel) {
             onRun = { picked, target -> appVm.opConvertMany(picked, target); convertPick = false },
             onDismiss = { convertPick = false },
         )
+    }
+}
+
+/** Animated "working" banner — spinning arc + live progress for the running op. */
+@Composable
+private fun WorkingCard(op: RunningOp, onCancel: () -> Unit) {
+    val inf = rememberInfiniteTransition(label = "wc")
+    val sweep by inf.animateFloat(
+        0f, 360f,
+        infiniteRepeatable(tween(1100, easing = LinearEasing), RepeatMode.Restart),
+        label = "sweep")
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))
+            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f))
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(46.dp), contentAlignment = Alignment.Center) {
+            val arcColor = MaterialTheme.colorScheme.primary
+            Canvas(Modifier.fillMaxSize()) {
+                drawArc(color = arcColor.copy(alpha = 0.25f),
+                    startAngle = 0f, sweepAngle = 360f, useCenter = false,
+                    style = Stroke(3.dp.toPx()))
+                drawArc(color = arcColor,
+                    startAngle = sweep, sweepAngle = 250f, useCenter = false,
+                    style = Stroke(3.dp.toPx(), cap = StrokeCap.Round))
+            }
+            Icon(Icons.Rounded.AutoAwesome, null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(18.dp))
+        }
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(op.label, fontWeight = FontWeight.SemiBold,
+                style = MaterialTheme.typography.titleSmall)
+            val p = op.progress
+            if (p != null && p.itemsTotal > 0) {
+                LinearProgressIndicator(
+                    progress = { p.itemsDone.toFloat() / p.itemsTotal },
+                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                )
+                Text("${p.itemsDone}/${p.itemsTotal} · ${p.currentName}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+            } else {
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                )
+            }
+        }
+        TextButton(onClick = onCancel) { Text("Cancel") }
     }
 }
 

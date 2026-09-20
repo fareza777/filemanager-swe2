@@ -39,6 +39,7 @@ import com.filezen.files.ui.search.SearchScreen
 import com.filezen.files.ui.settings.SettingsScreen
 import com.filezen.files.ui.storage.StorageScreen
 import com.filezen.files.ui.theme.FileZenTheme
+import com.filezen.files.ui.transfer.TransferScreen
 object Routes {
     const val HOME = "home"
     const val INBOX = "inbox"
@@ -54,6 +55,7 @@ object Routes {
     const val RECENT = "recent"
     const val CALENDAR = "calendar"
     const val OPTIMISE = "optimise"
+    const val TRANSFER = "transfer"
     fun folder(path: String) = "folder/${Uri.encode(path)}"
     fun preview(path: String) = "preview/${Uri.encode(path)}"
 }
@@ -227,6 +229,7 @@ fun FileZenApp_(appVm: AppViewModel) {
             composable(Routes.SETTINGS) { SettingsScreen(nav, appVm) }
             composable(Routes.STORAGE) { StorageScreen(nav, appVm) }
             composable(Routes.OPTIMISE) { OptimiseScreen(nav, appVm) }
+            composable(Routes.TRANSFER) { TransferScreen(nav) }
             composable(Routes.TRASH) { TrashScreen(nav, appVm) }
             composable(Routes.RULES) { SortRulesScreen(nav, appVm) }
             composable(Routes.HISTORY) { HistoryScreen(nav) }

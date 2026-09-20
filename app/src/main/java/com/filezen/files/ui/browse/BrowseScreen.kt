@@ -319,6 +319,22 @@ fun BrowseScreen(
                     }
                     item {
                         ListItem(
+                            headlineContent = { Text("Transfer to PC") },
+                            supportingContent = {
+                                Text("Share files over Wi-Fi — open the link in any browser",
+                                    style = MaterialTheme.typography.bodySmall)
+                            },
+                            leadingContent = {
+                                Icon(Icons.Rounded.Phonelink, null,
+                                    tint = MaterialTheme.colorScheme.primary)
+                            },
+                            modifier = Modifier.clickable {
+                                nav.navigate(Routes.TRANSFER)
+                            },
+                        )
+                    }
+                    item {
+                        ListItem(
                             headlineContent = { Text("Grant SD card / USB access") },
                             supportingContent = {
                                 Text("Pick the removable volume so FileZen can write to it",
@@ -404,6 +420,22 @@ fun BrowseScreen(
                             onClick = { openEntry(e) },
                             onLongClick = { vm.longPressSelect(e.path) },
                             trailing = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (e.isDirectory) {
+                                    val fav = appVm.isFavorite(e.path)
+                                    IconButton(onClick = {
+                                        if (fav) appVm.removeFavorite(e.path)
+                                        else appVm.addFavorite(e.path, e.name)
+                                    }, modifier = Modifier.size(34.dp)) {
+                                        Icon(
+                                            if (fav) Icons.Rounded.Star else Icons.Rounded.StarOutline,
+                                            if (fav) "Remove favourite" else "Add favourite",
+                                            tint = if (fav) MaterialTheme.colorScheme.primary
+                                                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                            modifier = Modifier.size(20.dp),
+                                        )
+                                    }
+                                }
                                 OverflowMenu(
                                     e = e,
                                     onOpen = { openEntry(e) },
@@ -422,6 +454,7 @@ fun BrowseScreen(
                                     onConvert = { convertTarget = e },
                                     onCompress = { appVm.opCompressImage(e.path) },
                                 )
+                                }
                             },
                         )
                     }
