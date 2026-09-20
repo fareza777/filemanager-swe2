@@ -42,41 +42,50 @@ class TransferServer(
 
     val isRunning: Boolean get() = http?.isAlive == true
 
-    /** Best-effort Wi-Fi/LAN IPv4 address of this device. */
-    fun lanIp(): String? {
+    data class NetAddr(val ip: String, val kind: String)
+
+    /**
+     * Every usable IPv4 on the device, labelled: "Wi-Fi", "Hotspot" (AP
+     * interfaces — the phone is sharing its own network), or "VPN"
+     * (tun/tailscale/wireguard — reachable from devices on that overlay,
+     * e.g. Tailscale, even across different real networks).
+     */
+    fun lanAddrs(): List<NetAddr> {
+        val out = LinkedHashMap<String, NetAddr>()
         runCatching {
-            val ifaces = NetworkInterface.getNetworkInterfaces().toList()
-            // Prefer common wifi/eth interfaces, then any site-local IPv4.
-            val sorted = ifaces.sortedByDescending {
-                it.name.startsWith("wlan") || it.name.startsWith("eth")
-            }
-            for (iface in sorted) {
+            for (iface in NetworkInterface.getNetworkInterfaces().toList()) {
                 if (!iface.isUp || iface.isLoopback) continue
+                val n = iface.name.lowercase()
                 for (addr in iface.inetAddresses.toList()) {
                     val host = addr.hostAddress ?: continue
                     if (addr.isLoopbackAddress || ':' in host) continue
-                    if (addr.isSiteLocalAddress ||
-                        host.startsWith("192.168.") || host.startsWith("10.") ||
-                        host.startsWith("172.")) return host
-                }
-            }
-            for (iface in ifaces) {
-                if (!iface.isUp || iface.isLoopback) continue
-                for (addr in iface.inetAddresses.toList()) {
-                    val host = addr.hostAddress ?: continue
-                    if (!addr.isLoopbackAddress && ':' !in host) return host
+                    val kind = when {
+                        n.startsWith("ap") || n.contains("swlan") ||
+                            host.startsWith("192.168.43.") -> "Hotspot"
+                        n.startsWith("tun") || n.startsWith("tailscale") ||
+                            n.startsWith("wg") || n.startsWith("ppp") -> "VPN"
+                        n.startsWith("wlan") || n.startsWith("eth") -> "Wi-Fi"
+                        addr.isSiteLocalAddress -> "LAN"
+                        else -> continue   // cellular/public IPs aren't reachable inbound
+                    }
+                    out.putIfAbsent(host, NetAddr(host, kind))
                 }
             }
         }
-        return null
+        // Best first: Wi-Fi, Hotspot, VPN, then anything else.
+        val rank = mapOf("Wi-Fi" to 0, "Hotspot" to 1, "VPN" to 2, "LAN" to 3)
+        return out.values.sortedBy { rank[it.kind] ?: 4 }
     }
+
+    /** Primary address for the URL; null when there's no local network at all. */
+    fun lanIp(): String? = lanAddrs().firstOrNull()?.ip
 
     @Synchronized
     fun start(): Result<String> = runCatching {
         if (isRunning) return@runCatching _state.value.url!!
         shareDir.mkdirs()
         if (!shareDir.isDirectory) error("Shared folder unavailable")
-        val ip = lanIp() ?: error("No Wi-Fi connection")
+        val ip = lanIp() ?: error("No local network (Wi-Fi, hotspot or VPN)")
         val server = Server()
         server.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false)
         http = server

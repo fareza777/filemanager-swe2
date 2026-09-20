@@ -132,6 +132,36 @@ fun TransferScreen(nav: NavController) {
                                     tint = Color.White)
                             }
                         }
+                        // Extra interfaces (hotspot, VPN overlay) also serve the
+                        // same URL path — show them so the right one can be picked.
+                        val alts = server.lanAddrs().drop(1)
+                        if (alts.isNotEmpty()) {
+                            Spacer(Modifier.height(10.dp))
+                            alts.forEach { a ->
+                                Row(
+                                    Modifier.fillMaxWidth()
+                                        .padding(top = 4.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(Color.Black.copy(alpha = 0.16f))
+                                        .clickable {
+                                            clipboard.setText(AnnotatedString(
+                                                "http://${a.ip}:8765" +
+                                                    state.url!!.substringAfter(":8765")))
+                                        }
+                                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(a.kind, color = Color(0xFF8FD8CE),
+                                        style = MaterialTheme.typography.labelSmall)
+                                    Spacer(Modifier.width(10.dp))
+                                    Text("http://${a.ip}:8765/…",
+                                        color = Color.White.copy(alpha = 0.85f),
+                                        fontFamily = FontFamily.Monospace,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
+                        }
                     }
                     state.error?.let {
                         Spacer(Modifier.height(8.dp))
@@ -204,6 +234,10 @@ fun TransferScreen(nav: NavController) {
                         "Tap Download in the browser to pull files to the PC")
                     HowRow(Icons.Rounded.Terminal,
                         "CLI friendly: curl -T file.zip <url>put/file.zip")
+                    HowRow(Icons.Rounded.WifiTethering,
+                        "No Wi-Fi around? Turn on the phone hotspot and connect the PC to it")
+                    HowRow(Icons.Rounded.VpnKey,
+                        "Different network? Put Tailscale on both devices, then use the VPN address")
                     HowRow(Icons.Rounded.Lock,
                         "The address contains a random key that changes every launch")
                 }
