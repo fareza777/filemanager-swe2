@@ -23,7 +23,7 @@ import com.filezen.files.ui.InboxViewModel
 import com.filezen.files.ui.common.*
 import java.io.File
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun InboxScreen(nav: NavController, appVm: AppViewModel, vm: InboxViewModel = viewModel()) {
     val untidy by vm.untidy.collectAsState()
@@ -39,6 +39,7 @@ fun InboxScreen(nav: NavController, appVm: AppViewModel, vm: InboxViewModel = vi
     var tidyRename by remember { mutableStateOf("") }
     var showRoots by remember { mutableStateOf(false) }
     var addRootPath by remember { mutableStateOf(false) }
+    var tidyBrowse by remember { mutableStateOf(false) }
     var trashConfirm by remember { mutableStateOf<List<String>?>(null) }
     var autoFor by remember { mutableStateOf<List<String>?>(null) }
 
@@ -151,6 +152,24 @@ fun InboxScreen(nav: NavController, appVm: AppViewModel, vm: InboxViewModel = vi
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             LazyColumn(Modifier.weight(1f, fill = false)) {
+                item(key = "share") {
+                    val shareDir = com.filezen.files.FileZenApp.c.transfer.shareDir
+                    ListItem(
+                        headlineContent = { Text("FileZen Share") },
+                        supportingContent = { Text("Ready for Transfer to PC", maxLines = 1) },
+                        leadingContent = { Icon(Icons.Rounded.Phonelink, null,
+                            tint = MaterialTheme.colorScheme.tertiary) },
+                        modifier = Modifier.clickable {
+                            val rename = if (paths.size == 1 && tidyRename != paths.first().substringAfterLast('/'))
+                                tidyRename else null
+                            shareDir.mkdirs()
+                            vm.tidyMove(paths, shareDir, rename)
+                            showTidyFor = null
+                        },
+                        colors = ListItemDefaults.colors(
+                            containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(0.35f)),
+                    )
+                }
                 items(favorites) { f ->
                     ListItem(
                         headlineContent = { Text(f.label) },
@@ -174,17 +193,25 @@ fun InboxScreen(nav: NavController, appVm: AppViewModel, vm: InboxViewModel = vi
                 )
             }
             OutlinedButton(
-                onClick = {
-                    nav.navigate(Routes.BROWSE) {
-                        popUpTo(Routes.HOME)
-                        launchSingleTop = true
-                    }
-                    showTidyFor = null
-                },
+                onClick = { tidyBrowse = true },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-            ) { Text("Pick a folder in Browse (select then Move)") }
+            ) { Text("Browse for a folder…") }
             Spacer(Modifier.height(28.dp))
         }
+    }
+    if (tidyBrowse) {
+        val paths = showTidyFor
+        FolderPickerSheet(
+            onPick = { dest ->
+                if (paths != null) {
+                    val rename = if (paths.size == 1 && tidyRename != paths.first().substringAfterLast('/'))
+                        tidyRename else null
+                    vm.tidyMove(paths, File(dest), rename)
+                }
+                tidyBrowse = false; showTidyFor = null
+            },
+            onDismiss = { tidyBrowse = false },
+        )
     }
 
     // Watched folders
@@ -218,15 +245,45 @@ fun InboxScreen(nav: NavController, appVm: AppViewModel, vm: InboxViewModel = vi
                     if (roots.isNotEmpty()) {
                         TextButton(onClick = { vm.resetRoots() }) { Text("Reset to Downloads") }
                     }
+                    val storage = android.os.Environment.getExternalStorageDirectory().absolutePath
+                    val waMedia = "$storage/Android/media/com.whatsapp/WhatsApp/Media"
+                    val presets = remember {
+                        buildList {
+                            add("WhatsApp media" to waMedia)
+                            add("WhatsApp (old path)" to "$storage/WhatsApp/Media")
+                            add("Camera" to "$storage/DCIM/Camera")
+                            add("Screenshots" to
+                                "${android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_PICTURES).absolutePath}/Screenshots")
+                            add("Telegram" to "$storage/Telegram")
+                            add("FileZen Share" to
+                                com.filezen.files.FileZenApp.c.transfer.shareDir.absolutePath)
+                        }.filter { File(it.second).isDirectory }
+                    }
+                    val missing = presets.filter { it.second !in effective }
+                    if (missing.isNotEmpty()) {
+                        Spacer(Modifier.height(8.dp))
+                        Text("Quick add", style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        androidx.compose.foundation.layout.FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            missing.forEach { (label, p) ->
+                                AssistChip(onClick = { vm.addRoot(p); vm.scan() },
+                                    label = { Text(label) },
+                                    leadingIcon = { Icon(Icons.Rounded.Add, null, Modifier.size(14.dp)) })
+                            }
+                        }
+                    }
                 }
             },
             confirmButton = { TextButton(onClick = { showRoots = false }) { Text("Done") } },
         )
     }
     if (addRootPath) {
-        TextInputDialog("Add watched folder", hint = "/storage/emulated/0/Pictures",
-            onConfirm = { vm.addRoot(it); addRootPath = false; vm.scan() },
-            onDismiss = { addRootPath = false })
+        FolderPickerSheet(
+            onPick = { vm.addRoot(it); addRootPath = false; vm.scan() },
+            onDismiss = { addRootPath = false },
+        )
     }
     trashConfirm?.let { paths ->
         ConfirmDialog(

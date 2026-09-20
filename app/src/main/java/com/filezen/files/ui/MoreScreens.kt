@@ -104,7 +104,33 @@ fun SortRulesScreen(nav: NavController, appVm: AppViewModel, vm: StorageViewMode
     var matchType by remember { mutableStateOf("EXTENSION") }
     var pattern by remember { mutableStateOf("") }
     var target by remember { mutableStateOf("") }
+    var source by remember { mutableStateOf<String?>(null) }
     var pickFolder by remember { mutableStateOf(false) }
+    var pickSource by remember { mutableStateOf(false) }
+
+    val storage = android.os.Environment.getExternalStorageDirectory().absolutePath
+    val waMedia = "$storage/Android/media/com.whatsapp/WhatsApp/Media"
+    val templates = remember {
+        fun pub(name: String) =
+            android.os.Environment.getExternalStoragePublicDirectory(name).absolutePath
+        listOf(
+            RuleTemplate("PDFs", "pdf", pub(android.os.Environment.DIRECTORY_DOCUMENTS) + "/PDFs", Icons.Rounded.PictureAsPdf),
+            RuleTemplate("Photos", "jpg,jpeg,png,webp,heic,heif", pub(android.os.Environment.DIRECTORY_PICTURES), Icons.Rounded.Image),
+            RuleTemplate("Videos", "mp4,mkv,webm,3gp,mov,avi", pub(android.os.Environment.DIRECTORY_MOVIES), Icons.Rounded.Movie),
+            RuleTemplate("Music & audio", "mp3,m4a,aac,flac,ogg,wav,opus", pub(android.os.Environment.DIRECTORY_MUSIC), Icons.Rounded.MusicNote),
+            RuleTemplate("Documents", "doc,docx,xls,xlsx,ppt,pptx,txt,csv,rtf", pub(android.os.Environment.DIRECTORY_DOCUMENTS), Icons.Rounded.Description),
+            RuleTemplate("App installers", "apk,apkm,xapk", pub(android.os.Environment.DIRECTORY_DOWNLOADS) + "/APKs", Icons.Rounded.Android),
+            RuleTemplate("Archives", "zip,rar,7z,tar,gz,bz2", pub(android.os.Environment.DIRECTORY_DOWNLOADS) + "/Archives", Icons.Rounded.FolderZip),
+            RuleTemplate("WhatsApp PDFs", "pdf", pub(android.os.Environment.DIRECTORY_DOCUMENTS) + "/WhatsApp",
+                Icons.Rounded.ChatBubble, source = "$waMedia/WhatsApp Documents"),
+            RuleTemplate("WhatsApp images", "jpg,jpeg,png,webp", pub(android.os.Environment.DIRECTORY_PICTURES) + "/WhatsApp",
+                Icons.Rounded.ChatBubble, source = "$waMedia/WhatsApp Images"),
+            RuleTemplate("WhatsApp video", "mp4,mkv,3gp", pub(android.os.Environment.DIRECTORY_MOVIES) + "/WhatsApp",
+                Icons.Rounded.ChatBubble, source = "$waMedia/WhatsApp Video"),
+            RuleTemplate("WhatsApp audio", "opus,aac,m4a,mp3", pub(android.os.Environment.DIRECTORY_MUSIC) + "/WhatsApp",
+                Icons.Rounded.ChatBubble, source = "$waMedia/WhatsApp Audio"),
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -123,12 +149,51 @@ fun SortRulesScreen(nav: NavController, appVm: AppViewModel, vm: StorageViewMode
             )
         },
     ) { padding ->
-        if (rules.isEmpty()) {
-            EmptyState(Icons.Rounded.RuleFolder, "No rules yet",
-                "Rules move matching files into a folder — e.g. “*.pdf → Documents/PDFs”.",
-                Modifier.padding(padding))
-        } else {
+        run {
             LazyColumn(Modifier.fillMaxSize().padding(padding)) {
+                item(key = "tpl-head") {
+                    Text("Quick templates — one tap adds the rule",
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                items(templates.filter { t ->
+                    rules.none { it.matchType == t.matchType && it.pattern == t.pattern &&
+                        it.targetPath == t.targetPath && it.sourcePath == t.source }
+                }, key = { it.title }) { t ->
+                    ListItem(
+                        headlineContent = { Text(t.title) },
+                        supportingContent = {
+                            Text("${t.pattern.split(",").joinToString(" ") { "*.$it" }}" +
+                                (t.source?.let { " in ${java.io.File(it).name}" } ?: "") +
+                                "  →  ${t.targetPath.substringAfterLast('/')}",
+                                style = MaterialTheme.typography.bodySmall)
+                        },
+                        leadingContent = { Icon(t.icon, null,
+                            tint = MaterialTheme.colorScheme.tertiary) },
+                        trailingContent = {
+                            IconButton(onClick = {
+                                vm.addRule(t.matchType, t.pattern, t.targetPath, t.source)
+                            }) { Icon(Icons.Rounded.AddCircle, "Add rule") }
+                        },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    )
+                }
+                item(key = "rules-head") {
+                    HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                    Text("Your rules",
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (rules.isEmpty()) {
+                    item(key = "rules-empty") {
+                        Text("No rules yet — tap + on a template above, or New rule for a custom one.",
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
                 items(rules, key = { it.id }) { r ->
                     ListItem(
                         headlineContent = { Text(com.filezen.files.core.fileops.SortRuleEngine.describe(r)) },
@@ -230,6 +295,45 @@ fun SortRulesScreen(nav: NavController, appVm: AppViewModel, vm: StorageViewMode
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
+                    Spacer(Modifier.height(16.dp))
+                    Text("Only inside folder (optional)", style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(8.dp))
+                    Surface(
+                        onClick = { pickSource = true },
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Row(
+                            Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Rounded.Source, null,
+                                tint = MaterialTheme.colorScheme.tertiary)
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    source?.substringAfterLast('/')?.ifBlank { source!! }
+                                        ?: "Anywhere",
+                                    fontWeight = FontWeight.Medium, maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis)
+                                if (source != null) {
+                                    Text(source!!, style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
+                            if (source != null) {
+                                IconButton(onClick = { source = null }) {
+                                    Icon(Icons.Rounded.Close, "Anywhere", Modifier.size(18.dp))
+                                }
+                            } else {
+                                Icon(Icons.Rounded.ChevronRight, null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
                     if (pattern.isNotBlank() && target.isNotBlank()) {
                         Spacer(Modifier.height(12.dp))
                         Surface(
@@ -239,7 +343,8 @@ fun SortRulesScreen(nav: NavController, appVm: AppViewModel, vm: StorageViewMode
                             Text(
                                 "${com.filezen.files.core.fileops.SortRuleEngine.describe(
                                     com.filezen.files.data.db.SortRule(
-                                        matchType = matchType, pattern = pattern, targetPath = target))} → ${target.substringAfterLast('/')}",
+                                        matchType = matchType, pattern = pattern,
+                                        targetPath = target, sourcePath = source))} → ${target.substringAfterLast('/')}",
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSecondaryContainer)
@@ -250,8 +355,8 @@ fun SortRulesScreen(nav: NavController, appVm: AppViewModel, vm: StorageViewMode
             confirmButton = {
                 Button(
                     onClick = {
-                        vm.addRule(matchType, pattern.trim(), target.trim())
-                        pattern = ""; target = ""; showAdd = false
+                        vm.addRule(matchType, pattern.trim(), target.trim(), source)
+                        pattern = ""; target = ""; source = null; showAdd = false
                     },
                     enabled = pattern.isNotBlank() && target.isNotBlank(),
                 ) { Text("Add rule") }
@@ -268,7 +373,23 @@ fun SortRulesScreen(nav: NavController, appVm: AppViewModel, vm: StorageViewMode
             onDismiss = { pickFolder = false },
         )
     }
+    if (pickSource) {
+        FolderPickerSheet(
+            startPath = source ?: android.os.Environment.getExternalStorageDirectory().absolutePath,
+            onPick = { source = it; pickSource = false },
+            onDismiss = { pickSource = false },
+        )
+    }
 }
+
+private data class RuleTemplate(
+    val title: String,
+    val pattern: String,
+    val targetPath: String,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val matchType: String = "EXTENSION",
+    val source: String? = null,
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

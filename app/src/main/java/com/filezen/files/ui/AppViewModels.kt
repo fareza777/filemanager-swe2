@@ -533,9 +533,13 @@ class StorageViewModel : ViewModel() {
     }
     fun purgeAll() = viewModelScope.launch { c.trash.purgeAll() }
 
-    fun addRule(matchType: String, pattern: String, target: String) = viewModelScope.launch {
-        c.db.sortRules().insert(SortRule(matchType = matchType, pattern = pattern, targetPath = target))
-    }
+    fun addRule(matchType: String, pattern: String, target: String, sourcePath: String? = null) =
+        viewModelScope.launch {
+            File(target).mkdirs()
+            c.db.sortRules().insert(SortRule(
+                matchType = matchType, pattern = pattern,
+                targetPath = target, sourcePath = sourcePath))
+        }
     fun deleteRule(r: SortRule) = viewModelScope.launch { c.db.sortRules().delete(r) }
     fun toggleRule(r: SortRule, enabled: Boolean) = viewModelScope.launch { c.db.sortRules().setEnabled(r.id, enabled) }
     fun setAutoSort(v: Boolean) = viewModelScope.launch { c.settings.setAutoSort(v) }

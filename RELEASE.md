@@ -81,6 +81,24 @@ Also declare `READ_MEDIA_*` fallback usage.
 3. Enrol in Play App Signing when prompted (first upload) — Google generates the
    app-signing certificate; keep the upload key safe.
 
+### What's new in 1.2.5 (versionCode 8)
+
+- **Move to folder…** — every file/folder (single or multi-select) can be moved to
+  any folder on the device via a real folder browser (descend, go up, create a
+  folder). Accessible from each file's ⋮ menu, the selection bar, the basket
+  "Move" button, and the Inbox tidy sheet.
+- **FileZen Share target** — "Send to Transfer folder" per file and a FileZen
+  Share row in every move/tidy picker stage files for the Transfer-to-PC browser
+  upload/download server.
+- **Scoped sort rules + templates** — sort rules gained an optional "Only inside
+  folder" scope (`sourcePath`, Room v3 migration) so e.g. `*.pdf` inside
+  WhatsApp Documents → `Documents/WhatsApp` without touching other PDFs.
+  One-tap templates cover PDFs, photos, video, music, docs, APKs, archives and
+  WhatsApp media types; extension patterns accept comma lists.
+- **Watched-folder quick add** — the Inbox watched-folders dialog offers
+  one-tap presets (WhatsApp media, Camera, Screenshots, Telegram, FileZen
+  Share) plus a real folder picker instead of typing paths.
+
 ## Testing notes (this build)
 
 - Unit tests: `./gradlew :app:testDebugUnitTest` — cover the file engine

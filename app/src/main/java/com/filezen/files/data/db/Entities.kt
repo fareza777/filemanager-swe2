@@ -52,6 +52,7 @@ data class SortRule(
     val matchType: String,  // EXTENSION / CONTAINS / REGEX
     val pattern: String,
     val targetPath: String,
+    val sourcePath: String? = null, // only files under this dir match (null = anywhere)
     val enabled: Boolean = true,
     val createdAt: Long = System.currentTimeMillis(),
 )

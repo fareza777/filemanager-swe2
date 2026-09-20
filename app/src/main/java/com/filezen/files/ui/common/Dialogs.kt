@@ -235,10 +235,19 @@ fun FolderPickerSheet(
 fun DestinationSheet(
     favorites: List<Favorite>,
     currentPath: String,
+    shareDir: File? = null,
     onPick: (String) -> Unit,
-    onBrowse: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    var browse by remember { mutableStateOf(false) }
+    if (browse) {
+        FolderPickerSheet(
+            startPath = currentPath,
+            onPick = onPick,
+            onDismiss = { browse = false },
+        )
+        return
+    }
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Text(
             "Move to…", style = MaterialTheme.typography.titleMedium,
@@ -246,6 +255,28 @@ fun DestinationSheet(
         )
         Spacer(Modifier.height(8.dp))
         LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f, fill = false)) {
+            if (shareDir != null) {
+                item(key = "share") {
+                    ListItem(
+                        headlineContent = { Text("FileZen Share") },
+                        supportingContent = {
+                            Text("Ready for Transfer to PC · ${shareDir.absolutePath}",
+                                style = MaterialTheme.typography.bodySmall, maxLines = 1,
+                                overflow = TextOverflow.Ellipsis)
+                        },
+                        leadingContent = {
+                            Icon(Icons.Rounded.Phonelink, null,
+                                tint = MaterialTheme.colorScheme.tertiary)
+                        },
+                        modifier = Modifier.clickable {
+                            shareDir.mkdirs()
+                            onPick(shareDir.absolutePath)
+                        },
+                        colors = ListItemDefaults.colors(
+                            containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(0.35f)),
+                    )
+                }
+            }
             items(favorites) { f ->
                 ListItem(
                     headlineContent = { Text(f.label) },
@@ -262,7 +293,7 @@ fun DestinationSheet(
         }
         Spacer(Modifier.height(4.dp))
         OutlinedButton(
-            onClick = onBrowse,
+            onClick = { browse = true },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
         ) { Text("Browse for a folder…") }
         TextButton(

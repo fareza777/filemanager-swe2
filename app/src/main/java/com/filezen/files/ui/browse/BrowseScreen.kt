@@ -70,6 +70,7 @@ fun BrowseScreen(
     var extractTarget by remember { mutableStateOf<FileEntry?>(null) }
     var convertTarget by remember { mutableStateOf<FileEntry?>(null) }
     var showDestPicker by remember { mutableStateOf(false) }
+    var moveTarget by remember { mutableStateOf<List<String>?>(null) }
     var showSortMenu by remember { mutableStateOf(false) }
     var showRulesPreview by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -145,6 +146,9 @@ fun BrowseScreen(
                         }
                         IconButton(onClick = { appVm.setClipboard(selection.toList(), cut = true); vm.clearSelection() }) {
                             Icon(Icons.Rounded.DriveFileMove, "Move")
+                        }
+                        IconButton(onClick = { moveTarget = selection.toList() }) {
+                            Icon(Icons.Rounded.FolderShared, "Move to folder…")
                         }
                         IconButton(onClick = { deleteConfirm = selection.toList() }) {
                             Icon(Icons.Rounded.Delete, "Delete")
@@ -453,6 +457,12 @@ fun BrowseScreen(
                                     onBasket = { appVm.basketAdd(e.path) },
                                     onConvert = { convertTarget = e },
                                     onCompress = { appVm.opCompressImage(e.path) },
+                                    onMoveTo = { moveTarget = listOf(e.path) },
+                                    onToTransfer = if (!e.isDirectory) ({
+                                        appVm.opMove(listOf(e.path),
+                                            com.filezen.files.FileZenApp.c.transfer.shareDir,
+                                            ConflictPolicy.KEEP_BOTH)
+                                    }) else null,
                                 )
                                 }
                             },
@@ -611,18 +621,26 @@ fun BrowseScreen(
         DestinationSheet(
             favorites = favorites,
             currentPath = path,
+            shareDir = com.filezen.files.FileZenApp.c.transfer.shareDir,
             onPick = { dest ->
                 appVm.opMove(basket.toList(), File(dest), ConflictPolicy.KEEP_BOTH)
                 appVm.basketClear()
                 showDestPicker = false
             },
-            onBrowse = {
-                nav.navigate(Routes.BROWSE) {
-                    popUpTo(Routes.HOME)
-                    launchSingleTop = true
-                }
-            },
             onDismiss = { showDestPicker = false },
+        )
+    }
+    moveTarget?.let { paths ->
+        DestinationSheet(
+            favorites = favorites,
+            currentPath = path,
+            shareDir = com.filezen.files.FileZenApp.c.transfer.shareDir,
+            onPick = { dest ->
+                appVm.opMove(paths, File(dest), ConflictPolicy.KEEP_BOTH)
+                vm.clearSelection()
+                moveTarget = null
+            },
+            onDismiss = { moveTarget = null },
         )
     }
 }
@@ -642,6 +660,8 @@ private fun OverflowMenu(
     onConvert: () -> Unit,
     onCompress: () -> Unit,
     onColorTag: (() -> Unit)? = null,
+    onMoveTo: () -> Unit,
+    onToTransfer: (() -> Unit)? = null,
 ) {
     var open by remember { mutableStateOf(false) }
     val ctx = androidx.compose.ui.platform.LocalContext.current
@@ -661,6 +681,13 @@ private fun OverflowMenu(
             }
             DropdownMenuItem(text = { Text("Rename") }, onClick = { onRename(); open = false },
                 leadingIcon = { Icon(Icons.Rounded.Edit, null) })
+            DropdownMenuItem(text = { Text("Move to folder…") }, onClick = { onMoveTo(); open = false },
+                leadingIcon = { Icon(Icons.Rounded.DriveFileMove, null) })
+            if (onToTransfer != null) {
+                DropdownMenuItem(text = { Text("Send to Transfer folder") },
+                    onClick = { onToTransfer(); open = false },
+                    leadingIcon = { Icon(Icons.Rounded.Phonelink, null) })
+            }
             DropdownMenuItem(text = { Text("Add to basket") }, onClick = { onBasket(); open = false },
                 leadingIcon = { Icon(Icons.Rounded.AddShoppingCart, null) })
             if (e.isDirectory) {

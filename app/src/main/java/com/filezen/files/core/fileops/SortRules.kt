@@ -11,8 +11,17 @@ object SortRuleEngine {
 
     fun matches(rule: SortRule, e: FileEntry): Boolean {
         if (e.isDirectory) return false
+        // Optional source scope: the rule only applies to files inside it
+        // (e.g. "*.pdf in WhatsApp Documents → Documents/WhatsApp").
+        rule.sourcePath?.let { src ->
+            val base = File(src).absolutePath
+            if (!e.path.startsWith(base + "/")) return false
+        }
         return when (rule.matchType) {
-            "EXTENSION" -> e.extension.equals(rule.pattern.trim().removePrefix("."), ignoreCase = true)
+            "EXTENSION" -> {
+                val wanted = rule.pattern.split(",").map { it.trim().removePrefix(".").lowercase() }
+                e.extension.lowercase() in wanted
+            }
             "CONTAINS" -> e.name.lowercase(Locale.ROOT).contains(rule.pattern.lowercase(Locale.ROOT))
             "REGEX" -> runCatching { Regex(rule.pattern, RegexOption.IGNORE_CASE).containsMatchIn(e.name) }
                 .getOrDefault(false)
@@ -41,10 +50,14 @@ object SortRuleEngine {
         return out
     }
 
-    fun describe(rule: SortRule): String = when (rule.matchType) {
-        "EXTENSION" -> "*.${rule.pattern.trim().removePrefix(".")}"
-        "CONTAINS" -> "name contains “${rule.pattern}”"
-        "REGEX" -> "name matches /${rule.pattern}/"
-        else -> rule.pattern
+    fun describe(rule: SortRule): String {
+        val base = when (rule.matchType) {
+            "EXTENSION" -> rule.pattern.split(",")
+                .joinToString(" ") { "*.${it.trim().removePrefix(".")}" }
+            "CONTAINS" -> "name contains “${rule.pattern}”"
+            "REGEX" -> "name matches /${rule.pattern}/"
+            else -> rule.pattern
+        }
+        return rule.sourcePath?.let { "$base in ${File(it).name}" } ?: base
     }
 }
