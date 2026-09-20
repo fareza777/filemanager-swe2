@@ -17,9 +17,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.border
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -27,6 +30,7 @@ import androidx.navigation.NavController
 import com.filezen.files.FileZenApp
 import com.filezen.files.Routes
 import com.filezen.files.core.model.FileEntry
+import com.filezen.files.core.model.formatSize
 import com.filezen.files.core.scan.Scanner
 import com.filezen.files.ops.Intents
 import com.filezen.files.ui.AppViewModel
@@ -107,6 +111,8 @@ fun CalendarScreen(nav: NavController, appVm: AppViewModel, vm: CalendarViewMode
     var selection by remember { mutableStateOf(setOf<String>()) }
     var dayMenu by remember { mutableStateOf(false) }
     var trashConfirm by remember { mutableStateOf<List<String>?>(null) }
+    var moveTarget by remember { mutableStateOf<List<String>?>(null) }
+    val favorites by appVm.favorites.collectAsState()
     val ctx = nav.context
 
     androidx.activity.compose.BackHandler(enabled = selection.isNotEmpty()) { selection = emptySet() }
@@ -122,6 +128,9 @@ fun CalendarScreen(nav: NavController, appVm: AppViewModel, vm: CalendarViewMode
                         IconButton(onClick = { selection = emptySet() }) { Icon(Icons.Rounded.Close, "Clear") }
                     },
                     actions = {
+                        IconButton(onClick = { moveTarget = selection.toList() }) {
+                            Icon(Icons.Rounded.FolderShared, "Move to folder…")
+                        }
                         IconButton(onClick = {
                             Intents.share(ctx, dayFiles.filter { it.path in selection })
                         }) { Icon(Icons.Rounded.Share, "Share") }
@@ -155,35 +164,53 @@ fun CalendarScreen(nav: NavController, appVm: AppViewModel, vm: CalendarViewMode
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
 
+            // ---- Calendar card ----
+            Card(
+                Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+                shape = RoundedCornerShape(28.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+            ) {
+            Column(Modifier.padding(bottom = 14.dp)) {
             // ---- Month header ----
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 IconButton(onClick = { month = month.minusMonths(1) }) {
-                    Icon(Icons.Rounded.ChevronLeft, "Previous")
+                    Icon(Icons.Rounded.ChevronLeft, "Previous",
+                        tint = MaterialTheme.colorScheme.primary)
                 }
-                Text(
-                    "${month.month.getDisplayName(Jts.FULL, Locale.getDefault())} ${month.year}",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.ExtraBold,
-                    modifier = Modifier.weight(1f),
-                    textAlign = TextAlign.Center,
-                )
+                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        "${month.month.getDisplayName(Jts.FULL, Locale.getDefault())} ${month.year}",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.ExtraBold,
+                        textAlign = TextAlign.Center,
+                    )
+                    val monthCount = byDay.filterKeys { YearMonth.from(it) == month }
+                        .values.sumOf { it.size }
+                    Text(if (monthCount > 0) "$monthCount files this month" else " ",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 IconButton(onClick = { month = month.plusMonths(1) }) {
-                    Icon(Icons.Rounded.ChevronRight, "Next")
+                    Icon(Icons.Rounded.ChevronRight, "Next",
+                        tint = MaterialTheme.colorScheme.primary)
                 }
             }
 
             // ---- Weekday letters ----
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                DAY_LETTERS.forEach { l ->
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+                DAY_LETTERS.forEachIndexed { i, l ->
                     Text(l, Modifier.weight(1f), textAlign = TextAlign.Center,
                         style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (i >= 5) MaterialTheme.colorScheme.tertiary
+                            else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(6.dp))
 
             // ---- Day grid ----
             val first = month.atDay(1)
@@ -191,8 +218,10 @@ fun CalendarScreen(nav: NavController, appVm: AppViewModel, vm: CalendarViewMode
             val cells = lead + month.lengthOfMonth()
             val rows = (cells + 6) / 7
             val today = LocalDate.now()
+            val maxDay = byDay.filterKeys { YearMonth.from(it) == month }
+                .values.maxOfOrNull { it.size } ?: 1
 
-            Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp)) {
                 repeat(rows) { w ->
                     Row(Modifier.fillMaxWidth()) {
                         repeat(7) { i ->
@@ -201,6 +230,7 @@ fun CalendarScreen(nav: NavController, appVm: AppViewModel, vm: CalendarViewMode
                             DayCell(
                                 date = date,
                                 count = date?.let { byDay[it]?.size ?: 0 } ?: 0,
+                                maxCount = maxDay,
                                 selected = date == selected,
                                 today = date == today,
                                 modifier = Modifier.weight(1f),
@@ -209,8 +239,18 @@ fun CalendarScreen(nav: NavController, appVm: AppViewModel, vm: CalendarViewMode
                     }
                 }
             }
+            // Jump back to today
+            if (month != YearMonth.now() || selected != LocalDate.now()) {
+                TextButton(
+                    onClick = { month = YearMonth.now(); selected = LocalDate.now()
+                        selection = emptySet() },
+                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                ) { Text("Jump to today") }
+            }
+            }
+            }
 
-            HorizontalDivider(Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
+            Spacer(Modifier.height(10.dp))
 
             // ---- Day detail ----
             Row(
@@ -224,7 +264,8 @@ fun CalendarScreen(nav: NavController, appVm: AppViewModel, vm: CalendarViewMode
                         style = MaterialTheme.typography.titleMedium)
                     Text(
                         if (dayFiles.isEmpty()) (if (scanning) "Scanning…" else "No files")
-                        else "${dayFiles.size} files",
+                        else "${dayFiles.size} files · " +
+                            formatSize(dayFiles.sumOf { it.size }),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -245,6 +286,20 @@ fun CalendarScreen(nav: NavController, appVm: AppViewModel, vm: CalendarViewMode
                                     dayFiles.firstOrNull()?.let {
                                         appVm.opZip(dayFiles.map { e -> e.path }, File(it.path).parentFile!!)
                                     }
+                                    dayMenu = false
+                                })
+                            DropdownMenuItem(
+                                text = { Text("Move all to folder…") },
+                                leadingIcon = { Icon(Icons.Rounded.FolderShared, null) },
+                                onClick = { moveTarget = dayFiles.map { it.path }; dayMenu = false })
+                            DropdownMenuItem(
+                                text = { Text("Send all to Transfer folder") },
+                                leadingIcon = { Icon(Icons.Rounded.Phonelink, null) },
+                                onClick = {
+                                    appVm.opMove(dayFiles.map { it.path },
+                                        FileZenApp.c.transfer.shareDir,
+                                        com.filezen.files.core.fileops.ConflictPolicy.KEEP_BOTH)
+                                    vm.drop(selected, dayFiles.map { it.path })
                                     dayMenu = false
                                 })
                             DropdownMenuItem(
@@ -292,40 +347,66 @@ fun CalendarScreen(nav: NavController, appVm: AppViewModel, vm: CalendarViewMode
             onDismiss = { trashConfirm = null },
         )
     }
+
+    moveTarget?.let { paths ->
+        DestinationSheet(
+            favorites = favorites,
+            currentPath = File(paths.first()).parent ?: "/storage/emulated/0",
+            shareDir = FileZenApp.c.transfer.shareDir,
+            onPick = { dest ->
+                appVm.opMove(paths, File(dest),
+                    com.filezen.files.core.fileops.ConflictPolicy.KEEP_BOTH)
+                vm.drop(selected, paths)
+                selection = emptySet()
+                moveTarget = null
+            },
+            onDismiss = { moveTarget = null },
+        )
+    }
 }
 
-/** One calendar day cell: number, today ring, selected fill, count dots. */
+/** One calendar day cell: number, heat-intensity fill by file count, today ring, selected pill. */
 @Composable
 private fun DayCell(
     date: LocalDate?,
     count: Int,
+    maxCount: Int,
     selected: Boolean,
     today: Boolean,
     modifier: Modifier = Modifier,
     onClick: (LocalDate) -> Unit,
 ) {
     val primary = MaterialTheme.colorScheme.primary
-    val scale by animateFloatAsState(if (selected) 1f else 0.9f, tween(180), label = "cell")
+    val scale by animateFloatAsState(if (selected) 1f else 0.92f, tween(180), label = "cell")
 
     Box(
-        modifier = modifier.aspectRatio(1f).padding(3.dp),
+        modifier = modifier.aspectRatio(1f).padding(2.dp),
         contentAlignment = Alignment.Center,
     ) {
         if (date == null) return
+        // Busier days glow more: fill alpha scales with the day's share of the
+        // month's max file count.
+        val heat = if (count > 0) (0.10f + 0.30f * (count.toFloat() / maxCount.coerceAtLeast(1)))
+            else 0f
         val bg = when {
             selected -> primary
-            today -> MaterialTheme.colorScheme.surfaceVariant
+            count > 0 -> primary.copy(alpha = heat)
             else -> Color.Transparent
         }
         val fg = when {
             selected -> MaterialTheme.colorScheme.onPrimary
             today -> MaterialTheme.colorScheme.primary
-            else -> MaterialTheme.colorScheme.onSurface
+            count > 0 -> MaterialTheme.colorScheme.onSurface
+            else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
         }
+        val border = if (today && !selected)
+            Modifier.border(1.4.dp, primary, CircleShape) else Modifier
         Column(
             Modifier
                 .fillMaxSize()
+                .graphicsLayer { scaleX = scale; scaleY = scale }
                 .clip(CircleShape)
+                .then(border)
                 .background(bg)
                 .clickable { onClick(date) },
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -333,18 +414,17 @@ private fun DayCell(
         ) {
             Text("${date.dayOfMonth}", color = fg,
                 style = MaterialTheme.typography.bodyMedium,
-                fontWeight = if (selected || today) FontWeight.Bold else FontWeight.Normal)
+                fontWeight = if (selected || today || count > 0) FontWeight.Bold
+                    else FontWeight.Normal)
             if (count > 0) {
-                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                    repeat(minOf(3, count)) {
-                        Box(
-                            Modifier.size(4.dp).clip(CircleShape)
-                                .background(if (selected) MaterialTheme.colorScheme.onPrimary
-                                    else MaterialTheme.colorScheme.tertiary))
-                    }
-                }
+                Text(if (count > 99) "99+" else "$count",
+                    color = if (selected) MaterialTheme.colorScheme.onPrimary
+                        else MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.labelSmall
+                        .copy(fontSize = 8.sp),
+                    fontWeight = FontWeight.Bold)
             } else {
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(9.dp))
             }
         }
     }

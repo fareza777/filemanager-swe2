@@ -81,6 +81,31 @@ Also declare `READ_MEDIA_*` fallback usage.
 3. Enrol in Play App Signing when prompted (first upload) — Google generates the
    app-signing certificate; keep the upload key safe.
 
+### What's new in 1.2.6 (versionCode 9)
+
+- **Move to folder… everywhere** — the ⋮ menu is now also on grid cards, and the
+  selection bar in Browse, Recent files and the file calendar all gain
+  "Move to folder…" plus a bulk "Send to Transfer folder".
+- **Transfer web app → full file manager** — the PC page now browses the whole
+  phone: root chips (Internal, Downloads, Documents, Pictures, DCIM, Movies,
+  Music, FileZen Share), breadcrumb navigation, image/video thumbnails,
+  checkboxes + Select-all, bulk Download-as-ZIP and bulk Delete, upload into
+  the folder being browsed, and a New-folder button.
+- **Transfer runs in background** — the HTTP server now lives in a
+  `dataSync` foreground service with a persistent notification (URL + Stop
+  action), so it keeps serving while you switch screens or lock the phone.
+  New permissions: `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_DATA_SYNC`,
+  `POST_NOTIFICATIONS` (declare in the Play Console form).
+- **Calendar redesign** — month card with file-count heat intensity per day
+  (busier days glow more), count badges, weekend column accent, "Jump to
+  today", per-day size total, and Move/Send-to-Transfer actions for the day.
+- **Sort rules screen** — rule cards with match-type icon, pattern and scope
+  chips, dimmed disabled state, rule counter, and a "Run now" chip that sweeps
+  watched folders + rule sources with all enabled rules immediately.
+- **Inbox reliability fix** — new files now land reliably: the InboxViewModel
+  restarts its FileObservers whenever watched roots change, and the screen
+  rescans every time it resumes (the VM survives navigation).
+
 ### What's new in 1.2.5 (versionCode 8)
 
 - **Move to folder…** — every file/folder (single or multi-select) can be moved to

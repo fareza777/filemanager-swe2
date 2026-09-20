@@ -365,6 +365,14 @@ class InboxViewModel : ViewModel() {
         scan()
         // Realtime inbox: file writes under watched roots trigger a debounced rescan.
         c.inbox.startWatching(viewModelScope) { scan() }
+        // Watched roots can change at any time (dialog add/remove, quick chips) —
+        // rebuild the FileObserver set and rescan whenever they do.
+        viewModelScope.launch {
+            roots.collect {
+                c.inbox.startWatching(viewModelScope) { scan() }
+                scan()
+            }
+        }
     }
 
     fun scan() {
@@ -543,6 +551,27 @@ class StorageViewModel : ViewModel() {
     fun deleteRule(r: SortRule) = viewModelScope.launch { c.db.sortRules().delete(r) }
     fun toggleRule(r: SortRule, enabled: Boolean) = viewModelScope.launch { c.db.sortRules().setEnabled(r.id, enabled) }
     fun setAutoSort(v: Boolean) = viewModelScope.launch { c.settings.setAutoSort(v) }
+
+    /** Apply every enabled rule to existing files: each watched inbox root plus
+     *  each rule's sourcePath folder gets swept once. Moves are logged. */
+    fun runRulesNow() = viewModelScope.launch {
+        val rules = c.db.sortRules().enabled()
+        if (rules.isEmpty()) return@launch
+        val dirs = LinkedHashSet<File>()
+        dirs += c.inbox.roots()
+        rules.mapNotNull { it.sourcePath }.forEach { dirs += File(it) }
+        val engine = SortRuleEngine
+        for (dir in dirs) {
+            dir.listFiles()?.filter { it.isFile && !it.isHidden }?.forEach { f ->
+                val e = FileEntry.from(f)
+                val rule = rules.firstOrNull { engine.matches(it, e) } ?: return@forEach
+                val target = File(rule.targetPath)
+                if (target.absolutePath == f.parentFile?.absolutePath) return@forEach
+                c.fileEngine.move(listOf(f), target, ConflictPolicy.KEEP_BOTH)
+            }
+        }
+        c.inbox.scan()
+    }
 }
 
 class SearchViewModel : ViewModel() {

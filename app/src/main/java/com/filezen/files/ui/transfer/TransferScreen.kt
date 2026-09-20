@@ -27,9 +27,11 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavController
 import com.filezen.files.FileZenApp
 import com.filezen.files.Routes
+import com.filezen.files.core.transfer.TransferService
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
@@ -46,6 +48,7 @@ fun TransferScreen(nav: NavController) {
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current
     val view = LocalView.current
+    val ctx = LocalContext.current
 
     // Keep the screen (and CPU/network) awake while the server is up.
     DisposableEffect(state.running) {
@@ -103,7 +106,8 @@ fun TransferScreen(nav: NavController) {
                                 color = Color.White,
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold)
-                            Text(if (state.running) "Open this address on your PC"
+                            Text(if (state.running)
+                                    "Open on your PC — keeps running in background"
                                  else "Start to share over Wi-Fi",
                                 color = Color(0xFFB8D4E8),
                                 style = MaterialTheme.typography.bodySmall)
@@ -173,9 +177,8 @@ fun TransferScreen(nav: NavController) {
 
             Button(
                 onClick = {
-                    scope.launch {
-                        if (state.running) server.stop() else server.start()
-                    }
+                    if (state.running) TransferService.stop(ctx)
+                    else TransferService.start(ctx)
                 },
                 modifier = Modifier.fillMaxWidth().height(56.dp),
                 shape = RoundedCornerShape(18.dp),

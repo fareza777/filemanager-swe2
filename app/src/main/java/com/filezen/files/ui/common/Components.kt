@@ -156,7 +156,8 @@ fun FileRow(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun FileCard(e: FileEntry, selected: Boolean, onClick: () -> Unit, onLongClick: () -> Unit,
-             folderColor: Color? = null) {
+             folderColor: Color? = null,
+             menu: (@Composable () -> Unit)? = null) {
     val bg = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
         else MaterialTheme.colorScheme.surfaceContainerLow
     Card(
@@ -167,18 +168,23 @@ fun FileCard(e: FileEntry, selected: Boolean, onClick: () -> Unit, onLongClick: 
         colors = CardDefaults.cardColors(containerColor = bg),
         shape = RoundedCornerShape(20.dp),
     ) {
-        Column(
-            modifier = Modifier.fillMaxSize().padding(10.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                ThumbBox(e, 68.dp, folderTint = folderColor)
+        Box(Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier.fillMaxSize().padding(10.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    ThumbBox(e, 68.dp, folderTint = folderColor)
+                }
+                Text(e.name, style = MaterialTheme.typography.bodySmall,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(if (e.isDirectory) "Folder" else formatSize(e.size),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Text(e.name, style = MaterialTheme.typography.bodySmall,
-                maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(if (e.isDirectory) "Folder" else formatSize(e.size),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (menu != null) {
+                Box(Modifier.align(Alignment.TopEnd).padding(6.dp).size(26.dp)) { menu() }
+            }
         }
     }
 }

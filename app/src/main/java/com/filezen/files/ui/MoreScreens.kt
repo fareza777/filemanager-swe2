@@ -21,6 +21,7 @@ import com.filezen.files.core.model.formatDate
 import com.filezen.files.core.model.formatSize
 import com.filezen.files.data.db.SortRule
 import com.filezen.files.ui.common.*
+import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -180,11 +181,24 @@ fun SortRulesScreen(nav: NavController, appVm: AppViewModel, vm: StorageViewMode
                     )
                 }
                 item(key = "rules-head") {
-                    HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                    Text("Your rules",
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Your rules (${rules.size})",
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (rules.any { it.enabled }) {
+                            AssistChip(
+                                onClick = { vm.runRulesNow() },
+                                label = { Text("Run now") },
+                                leadingIcon = { Icon(Icons.Rounded.PlayArrow, null,
+                                    Modifier.size(16.dp)) },
+                            )
+                        }
+                    }
                 }
                 if (rules.isEmpty()) {
                     item(key = "rules-empty") {
@@ -195,24 +209,86 @@ fun SortRulesScreen(nav: NavController, appVm: AppViewModel, vm: StorageViewMode
                     }
                 }
                 items(rules, key = { it.id }) { r ->
-                    ListItem(
-                        headlineContent = { Text(com.filezen.files.core.fileops.SortRuleEngine.describe(r)) },
-                        supportingContent = { Text("→ ${r.targetPath}", maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                        leadingContent = { Icon(Icons.Rounded.DriveFileMove, null) },
-                        trailingContent = {
+                    val typeIcon = when (r.matchType) {
+                        "EXTENSION" -> Icons.Rounded.Extension
+                        "CONTAINS" -> Icons.Rounded.Abc
+                        else -> Icons.Rounded.Code
+                    }
+                    Card(
+                        Modifier.fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (r.enabled)
+                                MaterialTheme.colorScheme.surfaceContainerLow
+                            else MaterialTheme.colorScheme.surfaceContainerLowest),
+                    ) {
+                        Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Switch(checked = r.enabled, onCheckedChange = { vm.toggleRule(r, it) })
+                                Icon(typeIcon, null,
+                                    tint = if (r.enabled) MaterialTheme.colorScheme.primary
+                                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp))
+                                Spacer(Modifier.width(10.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        com.filezen.files.core.fileops.SortRuleEngine.describe(r),
+                                        fontWeight = FontWeight.SemiBold,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = if (r.enabled) Color.Unspecified
+                                            else MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Spacer(Modifier.height(2.dp))
+                                    Text("→ ${r.targetPath}", maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Switch(checked = r.enabled,
+                                    onCheckedChange = { vm.toggleRule(r, it) })
                                 IconButton(onClick = { vm.deleteRule(r) }) {
-                                    Icon(Icons.Rounded.Delete, "Delete", tint = MaterialTheme.colorScheme.error)
+                                    Icon(Icons.Rounded.Delete, "Delete",
+                                        tint = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(20.dp))
                                 }
                             }
-                        },
-                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                    )
+                            // Scope + pattern chips
+                            Row(
+                                Modifier.padding(top = 6.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                SuggestionChip(
+                                    onClick = {},
+                                    label = { Text(r.matchType.lowercase()
+                                        .replaceFirstChar { it.uppercase() },
+                                        style = MaterialTheme.typography.labelSmall) },
+                                    modifier = Modifier.height(26.dp),
+                                )
+                                SuggestionChip(
+                                    onClick = {},
+                                    label = { Text(r.pattern.split(",")
+                                        .joinToString(" ") {
+                                            if (r.matchType == "EXTENSION") "*.$it" else it },
+                                        style = MaterialTheme.typography.labelSmall,
+                                        maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                    modifier = Modifier.height(26.dp).weight(1f, fill = false),
+                                )
+                                SuggestionChip(
+                                    onClick = {},
+                                    label = { Text(r.sourcePath?.let {
+                                            "in ${java.io.File(it).name}" } ?: "Anywhere",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                    icon = { Icon(Icons.Rounded.Source, null,
+                                        Modifier.size(12.dp)) },
+                                    modifier = Modifier.height(26.dp),
+                                )
+                            }
+                        }
+                    }
                 }
                 item {
                     Text(
-                        "Tip: run a rule from a folder's overflow → “Apply sort rules”.",
+                        "Rules run automatically when new files land in watched folders — and on demand from a folder's overflow → “Apply sort rules”, or Run now above.",
                         modifier = Modifier.padding(20.dp),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -446,6 +522,8 @@ fun RecentScreen(nav: NavController, appVm: AppViewModel, vm: HomeViewModel = vi
     val recent by vm.allRecent.collectAsState()
     var selection by remember { mutableStateOf(setOf<String>()) }
     var trashConfirm by remember { mutableStateOf<List<String>?>(null) }
+    var moveTarget by remember { mutableStateOf<List<String>?>(null) }
+    val favorites by appVm.favorites.collectAsState()
     val ctx = nav.context
 
     LaunchedEffect(Unit) { vm.loadAllRecent() }
@@ -473,6 +551,15 @@ fun RecentScreen(nav: NavController, appVm: AppViewModel, vm: HomeViewModel = vi
                             com.filezen.files.ops.Intents.share(
                                 ctx, recent.filter { it.path in selection })
                         }) { Icon(Icons.Rounded.Share, "Share") }
+                        IconButton(onClick = { moveTarget = selection.toList() }) {
+                            Icon(Icons.Rounded.FolderShared, "Move to folder…")
+                        }
+                        IconButton(onClick = {
+                            appVm.opMove(selection.toList(),
+                                com.filezen.files.FileZenApp.c.transfer.shareDir,
+                                com.filezen.files.core.fileops.ConflictPolicy.KEEP_BOTH)
+                            selection = emptySet()
+                        }) { Icon(Icons.Rounded.Phonelink, "Send to Transfer folder") }
                         IconButton(onClick = { trashConfirm = selection.toList() }) {
                             Icon(Icons.Rounded.Delete, "Trash")
                         }
@@ -531,6 +618,22 @@ fun RecentScreen(nav: NavController, appVm: AppViewModel, vm: HomeViewModel = vi
                 trashConfirm = null
             },
             onDismiss = { trashConfirm = null },
+        )
+    }
+
+    moveTarget?.let { paths ->
+        DestinationSheet(
+            favorites = favorites,
+            currentPath = File(paths.first()).parent ?: "/storage/emulated/0",
+            shareDir = com.filezen.files.FileZenApp.c.transfer.shareDir,
+            onPick = { dest ->
+                appVm.opMove(paths, File(dest),
+                    com.filezen.files.core.fileops.ConflictPolicy.KEEP_BOTH)
+                vm.dropRecent(paths)
+                selection = emptySet()
+                moveTarget = null
+            },
+            onDismiss = { moveTarget = null },
         )
     }
 }

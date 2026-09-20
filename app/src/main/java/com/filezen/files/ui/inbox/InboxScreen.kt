@@ -43,6 +43,17 @@ fun InboxScreen(nav: NavController, appVm: AppViewModel, vm: InboxViewModel = vi
     var trashConfirm by remember { mutableStateOf<List<String>?>(null) }
     var autoFor by remember { mutableStateOf<List<String>?>(null) }
 
+    // Files can arrive while the user sits on another screen — the VM survives
+    // navigation, so rescan every time this page becomes visible again.
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, ev ->
+            if (ev == androidx.lifecycle.Lifecycle.Event.ON_RESUME) vm.scan()
+        }
+        lifecycleOwner.lifecycle.addObserver(obs)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
+    }
+
     val shown = if (tab == 0) untidy else tidy
 
     androidx.activity.compose.BackHandler(enabled = selection.isNotEmpty()) { vm.clearSelection() }

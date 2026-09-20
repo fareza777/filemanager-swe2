@@ -150,6 +150,16 @@ fun BrowseScreen(
                         IconButton(onClick = { moveTarget = selection.toList() }) {
                             Icon(Icons.Rounded.FolderShared, "Move to folder…")
                         }
+                        IconButton(onClick = {
+                            val files = entries.filter { it.path in selection && !it.isDirectory }
+                                .map { it.path }
+                            if (files.isNotEmpty()) appVm.opMove(files,
+                                com.filezen.files.FileZenApp.c.transfer.shareDir,
+                                ConflictPolicy.KEEP_BOTH)
+                            vm.clearSelection()
+                        }) {
+                            Icon(Icons.Rounded.Phonelink, "Send to Transfer folder")
+                        }
                         IconButton(onClick = { deleteConfirm = selection.toList() }) {
                             Icon(Icons.Rounded.Delete, "Delete")
                         }
@@ -496,6 +506,32 @@ fun BrowseScreen(
                             folderColor = folderColors[e.path]?.let { Color(it) },
                             onClick = { openEntry(e) },
                             onLongClick = { vm.longPressSelect(e.path) },
+                            menu = {
+                                OverflowMenu(
+                                    e = e,
+                                    onOpen = { openEntry(e) },
+                                    onRename = { renameTarget = e },
+                                    onColorTag = if (e.isDirectory) ({ colorTarget = e }) else null,
+                                    onZip = { appVm.opZip(listOf(e.path), File(path)) },
+                                    onExtract = { extractTarget = e },
+                                    onTrash = { deleteConfirm = listOf(e.path) },
+                                    onShare = { Intents.share(nav.context, listOf(e)) },
+                                    onFavorite = {
+                                        if (appVm.isFavorite(e.path)) appVm.removeFavorite(e.path)
+                                        else appVm.addFavorite(e.path, e.name)
+                                    },
+                                    isFavorite = appVm.isFavorite(e.path),
+                                    onBasket = { appVm.basketAdd(e.path) },
+                                    onConvert = { convertTarget = e },
+                                    onCompress = { appVm.opCompressImage(e.path) },
+                                    onMoveTo = { moveTarget = listOf(e.path) },
+                                    onToTransfer = if (!e.isDirectory) ({
+                                        appVm.opMove(listOf(e.path),
+                                            com.filezen.files.FileZenApp.c.transfer.shareDir,
+                                            ConflictPolicy.KEEP_BOTH)
+                                    }) else null,
+                                )
+                            },
                         )
                     }
                     item { Spacer(Modifier.height(96.dp)) }
