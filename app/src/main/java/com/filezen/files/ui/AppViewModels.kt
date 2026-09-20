@@ -193,7 +193,7 @@ class HomeViewModel : ViewModel() {
             _lastPath.value = c.settings.lastBrowsePath.first()
             _usage.value = StorageAnalyzer.usage()
             _recent.value = withContext(Dispatchers.IO) {
-                Scanner.recent(recentRoots(), limit = 40)
+                recentViaIndex(40) ?: Scanner.recent(recentRoots(), limit = 40)
             }
         }
     }
@@ -201,9 +201,19 @@ class HomeViewModel : ViewModel() {
     fun loadAllRecent() {
         viewModelScope.launch {
             _allRecent.value = withContext(Dispatchers.IO) {
-                Scanner.recent(recentRoots(), limit = 500)
+                recentViaIndex(2000) ?: Scanner.recent(recentRoots(), limit = 500)
             }
         }
+    }
+
+    /** Index-backed "every file on storage, newest first" — null when the index
+     *  hasn't finished building yet so callers fall back to a flat scan. */
+    private suspend fun recentViaIndex(limit: Int): List<FileEntry>? {
+        if (!c.fileIndex.ready.value) return null
+        val rows = c.fileIndex.recent(limit)
+        if (rows.isEmpty()) return null
+        return rows.map { FileEntry(it.path, it.name, false, it.size, it.lastModified,
+            FileType.valueOf(it.type)) }
     }
 
     /** Optimistically drop entries after they're moved/deleted. */
@@ -423,22 +433,31 @@ class InboxViewModel : ViewModel() {
             if (dest == null) skipped += p
             else planned += TidyPlanItem(
                 path = p, name = f.name, dest = dest,
-                via = if (rule != null) "Rule: ${SortRuleEngine.describe(rule)}" else "By type",
+                via = when {
+                    rule != null -> "Rule: ${SortRuleEngine.describe(rule)}"
+                    defaultTidyDest(e.type).endsWith("FileZen") -> "Catch-all folder"
+                    else -> "By type"
+                },
             )
         }
         return planned to skipped
     }
 
-    /** Folders that make sense as automatic destinations by file type. */
-    private fun defaultTidyDest(t: FileType): String? {
+    /** Folders that make sense as automatic destinations by file type.
+     *  Unknown/archive/binary types land in Documents/FileZen so nothing is
+     *  ever left behind — every file always gets a home. */
+    private fun defaultTidyDest(t: FileType): String {
         val dir = when (t) {
             FileType.IMAGE -> Environment.DIRECTORY_PICTURES
             FileType.VIDEO -> Environment.DIRECTORY_MOVIES
             FileType.AUDIO -> Environment.DIRECTORY_MUSIC
             FileType.DOCUMENT, FileType.PDF, FileType.TEXT -> Environment.DIRECTORY_DOCUMENTS
-            else -> return null // archives/apps/unknown stay put unless a rule matches
+            else -> null
         }
-        return Environment.getExternalStoragePublicDirectory(dir).absolutePath
+        if (dir != null) return Environment.getExternalStoragePublicDirectory(dir).absolutePath
+        return File(
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS),
+            "FileZen").absolutePath
     }
 
     /** Auto-tidy: move each planned file to its resolved destination, mark tidy. */

@@ -49,16 +49,27 @@ fun OptimiseScreen(nav: NavController, appVm: AppViewModel) {
     LaunchedEffect(Unit) { if (usage == null) storageVm.analyze() }
 
     // Compressible photos + convertible files straight from the search index.
-    val compressible by produceState<List<FileEntry>>(emptyList()) {
+    // Re-pull the lists whenever an operation finishes so freed files drop off.
+    val lastSummary by appVm.lastSummary.collectAsState()
+    var tick by remember { mutableStateOf(0) }
+    LaunchedEffect(lastSummary) { if (lastSummary != null) tick++ }
+
+    val compressible by produceState<List<FileEntry>>(emptyList(), tick) {
         value = c.fileIndex.byType("IMAGE").map { FileEntry(it.path, it.name, false,
             it.size, it.lastModified, FileType.valueOf(it.type)) }
-            .filter { ConvertEngine.canCompress(it) && it.size > 300_000 }
+            .filter { ConvertEngine.canCompress(it) && it.size > 300_000 && File(it.path).exists() }
     }
-    val convertible by produceState<List<FileEntry>>(emptyList()) {
+    val convertible by produceState<List<FileEntry>>(emptyList(), tick) {
         value = (c.fileIndex.byType("IMAGE") + c.fileIndex.byType("TEXT"))
             .map { FileEntry(it.path, it.name, false, it.size, it.lastModified,
                 FileType.valueOf(it.type)) }
-            .filter { ConvertEngine.targetsFor(it).isNotEmpty() }
+            .filter { ConvertEngine.targetsFor(it).isNotEmpty() && File(it.path).exists() }
+    }
+    val largest by produceState<List<FileEntry>>(emptyList(), tick) {
+        value = c.fileIndex.all(40_000).sortedByDescending { it.size }.take(10)
+            .map { FileEntry(it.path, it.name, false, it.size, it.lastModified,
+                FileType.valueOf(it.type)) }
+            .filter { File(it.path).exists() }
     }
 
     val dupeReclaim = dups.sumOf { g -> g.files.drop(1).sumOf { it.size } }
@@ -164,6 +175,39 @@ fun OptimiseScreen(nav: NavController, appVm: AppViewModel) {
                             .drop(1).map { it.path }
                         appVm.opTrash(drop)
                     }) { Text("Keep newest") }
+                }
+            }
+
+            // — Large files —
+            if (largest.isNotEmpty()) {
+                item {
+                    OptCard(
+                        icon = Icons.Rounded.FolderZip, tint = Color(0xFFF6B77E),
+                        title = "Largest files",
+                        sub = "Top ${largest.size} files by size — trash what you don't need",
+                        actionLabel = null,
+                    ) { }
+                }
+                items(largest) { e ->
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        ThumbBox(e, 40.dp)
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(e.name, maxLines = 1,
+                                style = MaterialTheme.typography.bodyMedium)
+                            Text(formatSize(e.size),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.labelSmall)
+                        }
+                        TextButton(onClick = { appVm.opTrash(listOf(e.path)) }) {
+                            Text("Trash")
+                        }
+                    }
                 }
             }
 

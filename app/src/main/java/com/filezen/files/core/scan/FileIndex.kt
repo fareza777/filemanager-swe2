@@ -57,6 +57,9 @@ class FileIndex(private val db: ZenDatabase) {
     suspend fun all(limit: Int = 50000): List<FileIndexEntry> =
         db.fileIndex().allRows(limit)
 
+    suspend fun recent(limit: Int = 500): List<FileIndexEntry> =
+        db.fileIndex().recent(limit)
+
     suspend fun byDay(fromMs: Long, toMs: Long, limit: Int = 2000) =
         db.fileIndex().byDateRange(fromMs, toMs, limit)
 }

@@ -324,23 +324,37 @@ fun HomeScreen(nav: NavController, appVm: AppViewModel, vm: HomeViewModel = view
 /** Optimise card — shows reclaimable space (trash + duplicates), opens Storage. */
 @Composable
 private fun OptimiseCard(reclaimable: Long, onClick: () -> Unit) {
-    val primary = MaterialTheme.colorScheme.primary
+    // Same tonal family as the storage card above it, but tinted with the
+    // secondary hue and given its own sparkline so it reads as a sibling,
+    // not a duplicate.
+    val secondary = MaterialTheme.colorScheme.secondary
     val tertiary = MaterialTheme.colorScheme.tertiary
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).clickable(onClick = onClick),
-        shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        shape = RoundedCornerShape(24.dp),
     ) {
-        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.fillMaxWidth()
+                .background(
+                    androidx.compose.ui.graphics.Brush.linearGradient(
+                        listOf(
+                            secondary.copy(alpha = 0.13f).compositeOver(
+                                MaterialTheme.colorScheme.surfaceContainerLow),
+                            tertiary.copy(alpha = 0.09f).compositeOver(
+                                MaterialTheme.colorScheme.surfaceContainerLow),
+                        )
+                    )
+                )
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Surface(
                 shape = RoundedCornerShape(14.dp),
-                color = tertiary.copy(alpha = 0.18f)
-                    .compositeOver(MaterialTheme.colorScheme.surfaceContainerLow),
+                color = secondary.copy(alpha = 0.18f),
                 modifier = Modifier.size(44.dp),
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Icon(Icons.Rounded.AutoAwesome, null, tint = tertiary)
+                    Icon(Icons.Rounded.AutoAwesome, null, tint = secondary)
                 }
             }
             Spacer(Modifier.width(14.dp))
@@ -357,11 +371,11 @@ private fun OptimiseCard(reclaimable: Long, onClick: () -> Unit) {
             }
             Surface(
                 shape = CircleShape,
-                color = primary.copy(alpha = 0.12f),
+                color = secondary.copy(alpha = 0.12f),
                 modifier = Modifier.size(34.dp),
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Icon(Icons.Rounded.ChevronRight, null, tint = primary,
+                    Icon(Icons.Rounded.ChevronRight, null, tint = secondary,
                         modifier = Modifier.size(20.dp))
                 }
             }

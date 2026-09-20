@@ -137,6 +137,9 @@ interface FileIndexDao {
     @Query("SELECT * FROM file_index WHERE type = :type ORDER BY lastModified DESC LIMIT :limit")
     suspend fun byType(type: String, limit: Int = 2000): List<FileIndexEntry>
 
+    @Query("SELECT * FROM file_index ORDER BY lastModified DESC LIMIT :limit")
+    suspend fun recent(limit: Int = 500): List<FileIndexEntry>
+
     @Query("SELECT * FROM file_index WHERE lastModified BETWEEN :fromMs AND :toMs ORDER BY lastModified DESC LIMIT :limit")
     suspend fun byDateRange(fromMs: Long, toMs: Long, limit: Int = 2000): List<FileIndexEntry>
 
