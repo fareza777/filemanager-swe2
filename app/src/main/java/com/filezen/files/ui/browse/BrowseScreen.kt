@@ -71,6 +71,7 @@ fun BrowseScreen(
     var convertTarget by remember { mutableStateOf<FileEntry?>(null) }
     var showDestPicker by remember { mutableStateOf(false) }
     var moveTarget by remember { mutableStateOf<List<String>?>(null) }
+    var metadataTarget by remember { mutableStateOf<FileEntry?>(null) }
     var showSortMenu by remember { mutableStateOf(false) }
     var showRulesPreview by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -168,6 +169,13 @@ fun BrowseScreen(
                         }
                         IconButton(onClick = { appVm.opZip(selection.toList(), File(path)); vm.clearSelection() }) {
                             Icon(Icons.Rounded.FolderZip, "Zip")
+                        }
+                        IconButton(onClick = {
+                            val ps = selection.filter { p ->
+                                entries.any { it.path == p && !it.isDirectory } }
+                            appVm.opCleanMetadata(ps); vm.clearSelection()
+                        }) {
+                            Icon(Icons.Rounded.PrivacyTip, "Remove metadata")
                         }
                         IconButton(onClick = { Intents.share(nav.context, entries.filter { it.path in selection }) }) {
                             Icon(Icons.Rounded.Share, "Share")
@@ -534,6 +542,7 @@ fun BrowseScreen(
                                             com.filezen.files.FileZenApp.c.transfer.shareDir,
                                             ConflictPolicy.KEEP_BOTH)
                                     }) else null,
+                                    onMetadata = if (!e.isDirectory) ({ metadataTarget = e }) else null,
                                 )
                                 }
                             },
@@ -591,6 +600,7 @@ fun BrowseScreen(
                                             com.filezen.files.FileZenApp.c.transfer.shareDir,
                                             ConflictPolicy.KEEP_BOTH)
                                     }) else null,
+                                    onMetadata = if (!e.isDirectory) ({ metadataTarget = e }) else null,
                                 )
                             },
                         )
@@ -740,6 +750,11 @@ fun BrowseScreen(
             onDismiss = { moveTarget = null },
         )
     }
+    metadataTarget?.let { e ->
+        com.filezen.files.ui.privacy.MetadataDialog(
+            entry = e, appVm = appVm, onDismiss = { metadataTarget = null },
+        )
+    }
 }
 
 @Composable
@@ -759,6 +774,7 @@ private fun OverflowMenu(
     onColorTag: (() -> Unit)? = null,
     onMoveTo: () -> Unit,
     onToTransfer: (() -> Unit)? = null,
+    onMetadata: (() -> Unit)? = null,
 ) {
     var open by remember { mutableStateOf(false) }
     val ctx = androidx.compose.ui.platform.LocalContext.current
@@ -784,6 +800,11 @@ private fun OverflowMenu(
                 DropdownMenuItem(text = { Text("Send to Transfer folder") },
                     onClick = { onToTransfer(); open = false },
                     leadingIcon = { Icon(Icons.Rounded.Phonelink, null) })
+            }
+            if (onMetadata != null) {
+                DropdownMenuItem(text = { Text("Metadata & safe share") },
+                    onClick = { onMetadata(); open = false },
+                    leadingIcon = { Icon(Icons.Rounded.PrivacyTip, null) })
             }
             DropdownMenuItem(text = { Text("Add to basket") }, onClick = { onBasket(); open = false },
                 leadingIcon = { Icon(Icons.Rounded.AddShoppingCart, null) })

@@ -15,8 +15,8 @@ android {
         applicationId = "com.filezen.files"
         minSdk = 26
         targetSdk = 35
-        versionCode = 12
-        versionName = "1.4.1"
+        versionCode = 13
+        versionName = "1.4.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // PRODUCTION TODO: replace with your real AdMob App ID from
@@ -67,6 +67,7 @@ android {
     }
     packaging {
         resources.excludes += setOf("META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*")
+        resources.pickFirsts += "META-INF/versions/9/OSGI-INF/MANIFEST.MF"
     }
 }
 
@@ -100,6 +101,7 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:1.5.1")
     implementation("androidx.media3:media3-ui:1.5.1")
     implementation("androidx.documentfile:documentfile:1.0.1")
+    implementation("androidx.exifinterface:exifinterface:1.4.1") // Safe Share metadata cleaner
     // Tiny embedded HTTP server for the Phone ↔ PC browser transfer feature.
     implementation("org.nanohttpd:nanohttpd:2.3.1")
 

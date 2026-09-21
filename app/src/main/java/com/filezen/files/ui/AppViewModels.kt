@@ -144,6 +144,64 @@ class AppViewModel : ViewModel() {
     }
     fun cancelOp() = c.ops.cancel()
     fun dismissSummary() { FileZenApp.c.ops.clearSummary() }
+
+    /**
+     * Safe Share: write metadata-free copies of every supported file next to
+     * the originals ("<name>-cleaned.<ext>"). Unsupported files are reported.
+     */
+    fun opCleanMetadata(paths: List<String>) {
+        c.ops.launch(OpKind.CLEAN, "Removing metadata", paths, null) { cb ->
+            val results = mutableListOf<ItemResult>()
+            paths.forEachIndexed { i, p ->
+                cb(OpProgress(i, paths.size, File(p).name, 0, 0))
+                val src = File(p)
+                if (!com.filezen.files.core.privacy.MetadataCleaner.isCleanable(p)) {
+                    results += ItemResult(p, null, ItemStatus.SKIPPED, "nothing strippable")
+                    return@forEachIndexed
+                }
+                try {
+                    val dst = c.fileEngine.uniqueName(
+                        src.parentFile ?: src,
+                        com.filezen.files.core.privacy.MetadataCleaner.cleanedName(src),
+                    )
+                    val ok = com.filezen.files.core.privacy.MetadataCleaner.clean(src, dst)
+                    results += ItemResult(
+                        p, if (ok) dst.path else null,
+                        if (ok) ItemStatus.DONE else ItemStatus.FAILED,
+                        if (ok) "clean copy saved" else "clean failed",
+                    )
+                } catch (e: Exception) {
+                    results += ItemResult(p, null, ItemStatus.FAILED, e.message)
+                }
+            }
+            cb(OpProgress(paths.size, paths.size, "", 0, 0))
+            OpSummary(OpKind.CLEAN, results)
+        }
+    }
+}
+
+/** Feeds the Privacy / Safe-share screen with files that can carry metadata. */
+class PrivacyViewModel : ViewModel() {
+    private val c get() = FileZenApp.c
+
+    private val _files = MutableStateFlow<List<FileEntry>>(emptyList())
+    val files: StateFlow<List<FileEntry>> = _files
+    private val _scanning = MutableStateFlow(true)
+    val scanning: StateFlow<Boolean> = _scanning
+
+    init { refresh() }
+
+    fun refresh() {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            _scanning.value = true
+            _files.value = c.db.fileIndex().allRows()
+                .filter { com.filezen.files.core.privacy.MetadataCleaner.hasAnySupport(it.path) }
+                .sortedByDescending { it.lastModified }
+                .take(300)
+                .map { FileEntry.from(File(it.path)) }
+            _scanning.value = false
+        }
+    }
 }
 
 class HomeViewModel : ViewModel() {

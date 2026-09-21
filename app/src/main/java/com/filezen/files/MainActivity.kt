@@ -47,6 +47,7 @@ import com.filezen.files.ui.remote.RemoteScreen
 import com.filezen.files.ui.dualpane.DualPaneScreen
 import com.filezen.files.ui.archive.ArchiveScreen
 import com.filezen.files.ui.compare.CompareScreen
+import com.filezen.files.ui.privacy.PrivacyScreen
 object Routes {
     const val HOME = "home"
     const val INBOX = "inbox"
@@ -68,6 +69,7 @@ object Routes {
     const val REMOTE = "remote/{id}"
     const val DUALPANE = "dualpane"
     const val COMPARE = "compare"
+    const val METACLEAN = "metaclean"
     const val ARCHIVE = "archive/{path}?inner={inner}"
     fun folder(path: String) = "folder/${Uri.encode(path)}"
     fun preview(path: String) = "preview/${Uri.encode(path)}"
@@ -266,6 +268,7 @@ fun FileZenApp_(appVm: AppViewModel) {
             ) { back -> RemoteScreen(nav, back.arguments?.getLong("id") ?: 0L) }
             composable(Routes.DUALPANE) { DualPaneScreen(nav, appVm) }
             composable(Routes.COMPARE) { CompareScreen(nav) }
+            composable(Routes.METACLEAN) { PrivacyScreen(nav, appVm) }
             composable(
                 Routes.ARCHIVE,
                 arguments = listOf(

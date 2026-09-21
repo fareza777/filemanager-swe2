@@ -38,6 +38,9 @@ fun ToolsScreen(nav: NavController) {
             Tool(Icons.Rounded.CalendarMonth, "File calendar", "Browse & clean files by date", Routes.CALENDAR),
             Tool(Icons.Rounded.CompareArrows, "Compare folders", "Diff two directories side by side", Routes.COMPARE),
         ),
+        "Privacy" to listOf(
+            Tool(Icons.Rounded.PrivacyTip, "Safe share", "View & strip hidden metadata (GPS, camera, author) before sharing", Routes.METACLEAN),
+        ),
         "Free up space" to listOf(
             Tool(Icons.Rounded.AutoAwesome, "Optimise", "Trash, duplicates, compress & convert", Routes.OPTIMISE),
             Tool(Icons.Rounded.DonutLarge, "Storage analyser", "By type, large files, duplicates", Routes.STORAGE),
