@@ -1,6 +1,5 @@
 package com.filezen.files.core.semsearch
 
-import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import kotlin.math.sqrt
@@ -98,18 +97,5 @@ object Embedding {
         var d = 0f
         for (i in a.indices) d += a[i] * b[i]
         return d // both vectors are L2-normalised
-    }
-
-    fun pack(v: FloatArray): ByteArray {
-        val b = ByteBuffer.allocate(v.size * 4)
-        for (x in v) b.putFloat(x)
-        return b.array()
-    }
-
-    fun unpack(b: ByteArray): FloatArray {
-        val v = FloatArray(b.size / 4)
-        val bb = ByteBuffer.wrap(b)
-        for (i in v.indices) v[i] = bb.float
-        return v
     }
 }

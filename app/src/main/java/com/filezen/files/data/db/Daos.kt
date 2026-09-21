@@ -208,6 +208,33 @@ interface SyncPairDao {
 }
 
 @Dao
+interface FingerprintDao {
+    @Query("SELECT * FROM fingerprints ORDER BY takenAt DESC")
+    fun all(): Flow<List<Fingerprint>>
+
+    @Insert
+    suspend fun insert(f: Fingerprint): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertEntries(e: List<FingerprintEntry>)
+
+    @Query("SELECT * FROM fingerprint_entries WHERE fpId = :fpId")
+    suspend fun entries(fpId: Long): List<FingerprintEntry>
+
+    @Delete
+    suspend fun delete(f: Fingerprint)
+
+    @Query("DELETE FROM fingerprint_entries WHERE fpId = :fpId")
+    suspend fun deleteEntries(fpId: Long)
+
+    @Transaction
+    suspend fun deleteFull(f: Fingerprint) {
+        deleteEntries(f.id)
+        delete(f)
+    }
+}
+
+@Dao
 interface SyncStateDao {
     @Query("SELECT * FROM sync_state WHERE pairId = :pairId")
     suspend fun stateFor(pairId: Long): List<SyncStateEntry>

@@ -52,6 +52,7 @@ import com.filezen.files.ui.cleaner.PhotoCleanerScreen
 import com.filezen.files.ui.sync.SyncScreen
 import com.filezen.files.ui.power.PowerAccessScreen
 import com.filezen.files.ui.delta.DeltaScreen
+import com.filezen.files.ui.fingerprint.FingerprintScreen
 object Routes {
     const val HOME = "home"
     const val INBOX = "inbox"
@@ -78,6 +79,7 @@ object Routes {
     const val SYNCPAIRS = "sync"
     const val POWER = "power"
     const val DELTA = "delta"
+    const val FINGERPRINT = "fingerprint"
     const val ARCHIVE = "archive/{path}?inner={inner}"
     fun folder(path: String) = "folder/${Uri.encode(path)}"
     fun preview(path: String) = "preview/${Uri.encode(path)}"
@@ -281,6 +283,7 @@ fun FileZenApp_(appVm: AppViewModel) {
             composable(Routes.SYNCPAIRS) { SyncScreen(nav, appVm) }
             composable(Routes.POWER) { PowerAccessScreen(nav) }
             composable(Routes.DELTA) { DeltaScreen(nav) }
+            composable(Routes.FINGERPRINT) { FingerprintScreen(nav) }
             composable(
                 Routes.ARCHIVE,
                 arguments = listOf(

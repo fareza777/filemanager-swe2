@@ -51,6 +51,7 @@ fun ToolsScreen(nav: NavController) {
             Tool(Icons.Rounded.Phonelink, "Transfer to PC", "Wi-Fi web page with full file manager", Routes.TRANSFER),
             Tool(Icons.Rounded.Sync, "Folder sync", "Mirror or two-way sync — local or remote folders", Routes.SYNCPAIRS),
             Tool(Icons.Rounded.Difference, "Delta transfer (CDC)", "FastCDC chunks — send only what changed", Routes.DELTA),
+            Tool(Icons.Rounded.Fingerprint, "Folder fingerprint", "One IPFS CID per folder — verify what changed", Routes.FINGERPRINT),
             Tool(Icons.Rounded.Cloud, "Remote storage", "SFTP, SMB, WebDAV, S3 connections", Routes.CONNECTIONS),
             Tool(Icons.Rounded.Splitscreen, "Dual pane", "Two folders side by side — drag files across", Routes.DUALPANE),
             Tool(Icons.Rounded.Terminal, "Power access (Shizuku)", "Open Android/data & restricted folders", Routes.POWER),

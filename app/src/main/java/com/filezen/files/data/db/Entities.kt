@@ -131,3 +131,25 @@ data class SyncStateEntry(
     val remoteSize: Long,
     val remoteMtime: Long,
 )
+
+/** Saved Merkle folder fingerprint (IPFS UnixFSv1 CIDv1 root). */
+@Entity(tableName = "fingerprints")
+data class Fingerprint(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val path: String,
+    val cid: String,
+    val fileCount: Int,
+    val dirCount: Int,
+    val totalBytes: Long,
+    val takenAt: Long,
+)
+
+/** One entry (file or dir) inside a saved fingerprint — enables diffs. */
+@Entity(tableName = "fingerprint_entries", primaryKeys = ["fpId", "relPath"])
+data class FingerprintEntry(
+    val fpId: Long,
+    val relPath: String,
+    val cid: String,
+    val size: Long,      // -1 for directories
+    val isDir: Boolean,
+)

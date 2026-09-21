@@ -1,6 +1,7 @@
 package com.filezen.files.core.semsearch
 
 import android.content.Context
+import com.filezen.files.core.vec.VecIndex
 import com.filezen.files.data.db.DocChunk
 import com.filezen.files.data.db.DocIndexDao
 import com.filezen.files.data.db.DocManifest
@@ -118,7 +119,7 @@ class ContentIndex(private val app: Context, private val db: ZenDatabase) {
             chunks += DocChunk(
                 path = f.absolutePath, chunkIx = ix, title = title,
                 snippet = part.take(280).replace(Regex("\\s+"), " "),
-                embedding = Embedding.pack(Embedding.embed("$title $part")),
+                embedding = VecIndex.pack16(Embedding.embed("$title $part")),
                 terms = Embedding.terms(part).joinToString(" "),
             )
             i += CHUNK; ix++
@@ -131,9 +132,14 @@ class ContentIndex(private val app: Context, private val db: ZenDatabase) {
     suspend fun search(query: String, k: Int = 40): List<Hit> = withContext(Dispatchers.Default) {
         val qv = Embedding.embed(query)
         val qTerms = Embedding.terms(query).toSet()
+        val chunks = db.docIndex().allChunks()
+        // Exact KNN over the stored float16 vectors (sqlite-vec style), then
+        // a coverage gate against literal query terms.
+        val knn = VecIndex.knn(qv, chunks.map { it.id to it.embedding }, k = chunks.size)
+        val byId = chunks.associateBy { it.id }
         val best = HashMap<String, Hit>()
-        for (c in db.docIndex().allChunks()) {
-            val sim = Embedding.cosine(qv, Embedding.unpack(c.embedding))
+        for ((id, sim) in knn) {
+            val c = byId[id] ?: continue
             // Coverage: fraction of query terms literally present in the chunk's
             // tokens. Pure cosine on a hashed bucket space produces false
             // positives for unrelated docs, so gate on coverage.
