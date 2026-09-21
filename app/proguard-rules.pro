@@ -10,3 +10,6 @@
 # Play services ads
 -keep class com.google.android.gms.ads.** { *; }
 -dontwarn com.google.android.gms.ads.**
+# jcifs-ng uses slf4j optionally — no binder on Android
+-dontwarn org.slf4j.**
+-dontwarn jcifs.**

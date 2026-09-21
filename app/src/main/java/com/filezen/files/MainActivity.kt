@@ -11,6 +11,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
@@ -40,6 +41,12 @@ import com.filezen.files.ui.settings.SettingsScreen
 import com.filezen.files.ui.storage.StorageScreen
 import com.filezen.files.ui.theme.FileZenTheme
 import com.filezen.files.ui.transfer.TransferScreen
+import com.filezen.files.ui.tools.ToolsScreen
+import com.filezen.files.ui.remote.ConnectionsScreen
+import com.filezen.files.ui.remote.RemoteScreen
+import com.filezen.files.ui.dualpane.DualPaneScreen
+import com.filezen.files.ui.archive.ArchiveScreen
+import com.filezen.files.ui.compare.CompareScreen
 object Routes {
     const val HOME = "home"
     const val INBOX = "inbox"
@@ -56,8 +63,17 @@ object Routes {
     const val CALENDAR = "calendar"
     const val OPTIMISE = "optimise"
     const val TRANSFER = "transfer"
+    const val TOOLS = "tools"
+    const val CONNECTIONS = "connections"
+    const val REMOTE = "remote/{id}"
+    const val DUALPANE = "dualpane"
+    const val COMPARE = "compare"
+    const val ARCHIVE = "archive/{path}?inner={inner}"
     fun folder(path: String) = "folder/${Uri.encode(path)}"
     fun preview(path: String) = "preview/${Uri.encode(path)}"
+    fun remote(id: Long) = "remote/$id"
+    fun archive(path: String, inner: String = "") =
+        "archive/${Uri.encode(path)}?inner=${Uri.encode(inner)}"
 }
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -107,7 +123,7 @@ fun FileZenApp_(appVm: AppViewModel) {
     // On a bottom-nav tab, Back returns to Home instead of exiting the app.
     androidx.activity.compose.BackHandler(
         enabled = currentRoute == null ||
-            currentRoute in setOf(Routes.INBOX, Routes.BROWSE, Routes.STORAGE),
+            currentRoute in setOf(Routes.INBOX, Routes.BROWSE, Routes.STORAGE, Routes.TOOLS),
     ) {
         if (!nav.popBackStack(Routes.HOME, inclusive = false)) {
             nav.navigate(Routes.HOME) {
@@ -144,16 +160,22 @@ fun FileZenApp_(appVm: AppViewModel) {
                     tonalElevation = 0.dp,
                 ) {
                     val route = currentRoute
+                    val untidyList by FileZenApp.c.db.inbox().untidy()
+                        .collectAsState(initial = emptyList())
+                    val untidy = untidyList.size
+                    // Inbox sits centre with a live badge — the flagship flow.
                     val items = listOf(
                         Triple(Routes.HOME, stringResource(R.string.nav_home), Icons.Rounded.Home),
-                        Triple(Routes.INBOX, stringResource(R.string.nav_inbox), Icons.Rounded.Inbox),
                         Triple(Routes.BROWSE, stringResource(R.string.nav_browse), Icons.Rounded.FolderCopy),
+                        Triple(Routes.INBOX, stringResource(R.string.nav_inbox), Icons.Rounded.Inbox),
                         Triple(Routes.STORAGE, stringResource(R.string.nav_storage), Icons.Rounded.DonutLarge),
+                        Triple(Routes.TOOLS, stringResource(R.string.nav_tools), Icons.Rounded.Build),
                     )
                     items.forEach { (r, label, icon) ->
                         ZenNavItem(
                             route = r, label = label, icon = icon,
                             selected = route == r,
+                            badge = if (r == Routes.INBOX && untidy > 0) untidy else 0,
                             onClick = {
                                 if (route != r) {
                                     nav.navigate(r) {
@@ -234,6 +256,25 @@ fun FileZenApp_(appVm: AppViewModel) {
             composable(Routes.RULES) { SortRulesScreen(nav, appVm) }
             composable(Routes.HISTORY) { HistoryScreen(nav) }
             composable(Routes.CALENDAR) { CalendarScreen(nav, appVm) }
+            composable(Routes.TOOLS) { ToolsScreen(nav) }
+            composable(Routes.CONNECTIONS) { ConnectionsScreen(nav) }
+            composable(
+                Routes.REMOTE,
+                arguments = listOf(navArgument("id") { type = NavType.LongType }),
+            ) { back -> RemoteScreen(nav, back.arguments?.getLong("id") ?: 0L) }
+            composable(Routes.DUALPANE) { DualPaneScreen(nav, appVm) }
+            composable(Routes.COMPARE) { CompareScreen(nav) }
+            composable(
+                Routes.ARCHIVE,
+                arguments = listOf(
+                    navArgument("path") { type = NavType.StringType },
+                    navArgument("inner") { type = NavType.StringType; defaultValue = "" },
+                ),
+            ) { back ->
+                ArchiveScreen(nav,
+                    Uri.decode(back.arguments?.getString("path") ?: ""),
+                    back.arguments?.getString("inner")?.let { Uri.decode(it) } ?: "")
+            }
             composable(Routes.RECENT) { CompositionLocalProvider(
                 com.filezen.files.ui.common.LocalAnimScope provides this) { RecentScreen(nav, appVm) } }
         }
@@ -257,6 +298,7 @@ private fun androidx.compose.foundation.layout.RowScope.ZenNavItem(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     selected: Boolean,
     onClick: () -> Unit,
+    badge: Int = 0,
 ) {
     val pillAlpha by androidx.compose.animation.core.animateFloatAsState(
         if (selected) 1f else 0f,
@@ -293,6 +335,21 @@ private fun androidx.compose.foundation.layout.RowScope.ZenNavItem(
             }
             Icon(icon, label, tint = iconTint,
                 modifier = Modifier.size(23.dp + (if (selected) 1.dp else 0.dp)))
+            if (badge > 0) {
+                Box(
+                    Modifier
+                        .align(androidx.compose.ui.Alignment.TopEnd)
+                        .padding(end = 2.dp)
+                        .size(17.dp)
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .background(MaterialTheme.colorScheme.error),
+                    contentAlignment = androidx.compose.ui.Alignment.Center,
+                ) {
+                    Text(if (badge > 99) "99+" else badge.toString(),
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                        color = MaterialTheme.colorScheme.onError)
+                }
+            }
         }
         Spacer(Modifier.height(3.dp))
         Text(

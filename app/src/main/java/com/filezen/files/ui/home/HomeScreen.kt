@@ -129,6 +129,51 @@ fun HomeScreen(nav: NavController, appVm: AppViewModel, vm: HomeViewModel = view
                 }
             }
 
+            // Quick access — flagship tools one tap from Home
+            Spacer(Modifier.height(14.dp))
+            AnimatedVisibility(entered, enter = enterIn(110)) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                data class QA(val icon: androidx.compose.ui.graphics.vector.ImageVector,
+                              val label: String, val route: String)
+                listOf(
+                    QA(Icons.Rounded.Splitscreen, "Dual pane", Routes.DUALPANE),
+                    QA(Icons.Rounded.Cloud, "Remote", Routes.CONNECTIONS),
+                    QA(Icons.Rounded.Phonelink, "To PC", Routes.TRANSFER),
+                    QA(Icons.Rounded.Build, "Tools", Routes.TOOLS),
+                ).forEach { qa ->
+                    Card(
+                        Modifier.weight(1f).clickable { nav.navigate(qa.route) },
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+                    ) {
+                        Column(
+                            Modifier.fillMaxWidth().padding(vertical = 13.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(11.dp),
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.13f),
+                                modifier = Modifier.size(36.dp),
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(qa.icon, null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(19.dp))
+                                }
+                            }
+                            Spacer(Modifier.height(7.dp))
+                            Text(qa.label, style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold, maxLines = 1)
+                        }
+                    }
+                }
+            }
+            }
+
             // Optimise — quick reclaim card (trash + identical duplicates)
             Spacer(Modifier.height(14.dp))
             AnimatedVisibility(entered, enter = enterIn(140)) {

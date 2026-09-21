@@ -15,8 +15,8 @@ android {
         applicationId = "com.filezen.files"
         minSdk = 26
         targetSdk = 35
-        versionCode = 9
-        versionName = "1.2.6"
+        versionCode = 10
+        versionName = "1.3.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // PRODUCTION TODO: replace with your real AdMob App ID from
@@ -102,6 +102,12 @@ dependencies {
     implementation("androidx.documentfile:documentfile:1.0.1")
     // Tiny embedded HTTP server for the Phone ↔ PC browser transfer feature.
     implementation("org.nanohttpd:nanohttpd:2.3.1")
+
+    // Remote storage backends (Twig-style: one Fs interface per source).
+    implementation("com.github.mwiede:jsch:0.2.24")          // SFTP
+    implementation("eu.agno3.jcifs:jcifs-ng:2.1.10")         // SMB
+    // HttpURLConnection cannot send PROPFIND — WebDAV needs a real HTTP client.
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")

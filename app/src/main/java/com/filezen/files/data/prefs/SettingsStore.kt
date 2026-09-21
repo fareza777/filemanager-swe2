@@ -35,6 +35,7 @@ class SettingsStore(private val ctx: Context) {
         val FOLDER_COLORS = stringPreferencesKey("folder_colors")
         val ONBOARDED = booleanPreferencesKey("onboarded")
         val RECENT_QUERY = stringPreferencesKey("recent_queries")
+        val REMOTE_CONNS = stringPreferencesKey("remote_connections")
         val SCROLL_PREFIX = "scroll_" // + sanitized path -> "index,offset"
     }
 
@@ -102,6 +103,17 @@ class SettingsStore(private val ctx: Context) {
             it[K.RECENT_QUERY] = (listOf(q.trim()) + cur.filter { s -> s != q.trim() }).take(10).joinToString("\n")
         }
     }
+
+    /** Remote connections list (JSON via ConnectionStore). */
+    val remoteConnections: Flow<List<com.filezen.files.core.remote.RemoteConnection>> =
+        ctx.zenPrefs.data.map {
+            com.filezen.files.core.remote.ConnectionStore.decode(it[K.REMOTE_CONNS] ?: "[]")
+        }
+    suspend fun setRemoteConnections(
+        list: List<com.filezen.files.core.remote.RemoteConnection>) =
+        ctx.zenPrefs.edit {
+            it[K.REMOTE_CONNS] = com.filezen.files.core.remote.ConnectionStore.encode(list)
+        }
 
     fun scrollFor(path: String): Flow<ScrollState> = ctx.zenPrefs.data.map {
         val raw = it[stringPreferencesKey(K.SCROLL_PREFIX + path.hashCode())] ?: return@map ScrollState()

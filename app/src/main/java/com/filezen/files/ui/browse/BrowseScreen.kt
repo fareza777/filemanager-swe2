@@ -129,6 +129,9 @@ fun BrowseScreen(
     fun openEntry(e: FileEntry) {
         if (selection.isNotEmpty()) { vm.toggleSelect(e.path); return }
         if (e.isDirectory) nav.navigate(Routes.folder(e.path))
+        // Archive-as-folder (Twig-style): browse a ZIP/TAR without extracting.
+        else if (com.filezen.files.core.archive.ArchiveFs.isBrowsable(e.name))
+            nav.navigate(Routes.archive(e.path))
         else nav.navigate(Routes.preview(e.path))
     }
 
@@ -330,6 +333,64 @@ fun BrowseScreen(
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
+                    }
+                    // Remote storage connections (SFTP / SMB / WebDAV / S3)
+                    item {
+                        val remoteConns by com.filezen.files.FileZenApp.c.settings
+                            .remoteConnections.collectAsState(initial = emptyList())
+                        SectionHeader("Remote storage")
+                        remoteConns.forEach { conn ->
+                            ListItem(
+                                headlineContent = { Text(conn.label.ifBlank { conn.host }) },
+                                supportingContent = {
+                                    Text("${conn.type.label} · ${conn.host}",
+                                        style = MaterialTheme.typography.bodySmall)
+                                },
+                                leadingContent = {
+                                    Icon(Icons.Rounded.Cloud, null,
+                                        tint = MaterialTheme.colorScheme.primary)
+                                },
+                                trailingContent = {
+                                    Icon(Icons.Rounded.ChevronRight, null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                },
+                                modifier = Modifier.clickable {
+                                    nav.navigate(Routes.remote(conn.id))
+                                },
+                            )
+                        }
+                        ListItem(
+                            headlineContent = { Text(if (remoteConns.isEmpty())
+                                "Remote storage (SFTP, SMB, WebDAV, S3)"
+                                else "Manage connections") },
+                            supportingContent = {
+                                Text(if (remoteConns.isEmpty())
+                                    "Connect a server or NAS — it appears here"
+                                    else "Add, edit or test connections",
+                                    style = MaterialTheme.typography.bodySmall)
+                            },
+                            leadingContent = {
+                                Icon(Icons.Rounded.AddLink, null,
+                                    tint = MaterialTheme.colorScheme.primary)
+                            },
+                            modifier = Modifier.clickable {
+                                nav.navigate(Routes.CONNECTIONS)
+                            },
+                        )
+                        ListItem(
+                            headlineContent = { Text("Dual pane") },
+                            supportingContent = {
+                                Text("Two folders side by side — copy/move across",
+                                    style = MaterialTheme.typography.bodySmall)
+                            },
+                            leadingContent = {
+                                Icon(Icons.Rounded.Splitscreen, null,
+                                    tint = MaterialTheme.colorScheme.primary)
+                            },
+                            modifier = Modifier.clickable {
+                                nav.navigate(Routes.DUALPANE)
+                            },
+                        )
                     }
                     item {
                         ListItem(
