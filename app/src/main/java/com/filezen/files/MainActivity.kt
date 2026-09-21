@@ -55,6 +55,8 @@ import com.filezen.files.ui.delta.DeltaScreen
 import com.filezen.files.ui.fingerprint.FingerprintScreen
 import com.filezen.files.ui.typecheck.TypeCheckScreen
 import com.filezen.files.ui.drivecheck.DriveCheckScreen
+import com.filezen.files.ui.shield.ShieldScreen
+import com.filezen.files.ui.timemachine.TimeMachineScreen
 object Routes {
     const val HOME = "home"
     const val INBOX = "inbox"
@@ -84,6 +86,8 @@ object Routes {
     const val FINGERPRINT = "fingerprint"
     const val TYPECHECK = "typecheck"
     const val DRIVECHECK = "drivecheck"
+    const val SHIELD = "shield"
+    const val TIMEMACHINE = "timemachine"
     const val ARCHIVE = "archive/{path}?inner={inner}"
     fun folder(path: String) = "folder/${Uri.encode(path)}"
     fun preview(path: String) = "preview/${Uri.encode(path)}"
@@ -290,6 +294,8 @@ fun FileZenApp_(appVm: AppViewModel) {
             composable(Routes.FINGERPRINT) { FingerprintScreen(nav) }
             composable(Routes.TYPECHECK) { TypeCheckScreen(nav) }
             composable(Routes.DRIVECHECK) { DriveCheckScreen(nav) }
+            composable(Routes.SHIELD) { ShieldScreen(nav) }
+            composable(Routes.TIMEMACHINE) { TimeMachineScreen(nav) }
             composable(
                 Routes.ARCHIVE,
                 arguments = listOf(

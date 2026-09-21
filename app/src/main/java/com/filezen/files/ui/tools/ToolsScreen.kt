@@ -43,6 +43,10 @@ fun ToolsScreen(nav: NavController) {
         "Privacy" to listOf(
             Tool(Icons.Rounded.PrivacyTip, "Safe share", "View & strip hidden metadata (GPS, camera, author) before sharing", Routes.METACLEAN),
         ),
+        "Protect & recover" to listOf(
+            Tool(Icons.Rounded.Shield, "Recovery shield", "Reed-Solomon parity — repair corrupted files (PAR2-style)", Routes.SHIELD),
+            Tool(Icons.Rounded.History, "File time machine", "Version history via VCDIFF deltas — restore any version", Routes.TIMEMACHINE),
+        ),
         "Free up space" to listOf(
             Tool(Icons.Rounded.AutoAwesome, "Optimise", "Trash, duplicates, compress & convert", Routes.OPTIMISE),
             Tool(Icons.Rounded.Collections, "Photo cleaner", "Duplicates, similar shots & blurry photos", Routes.PHOTOCLEAN),
