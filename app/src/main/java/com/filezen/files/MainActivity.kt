@@ -53,6 +53,8 @@ import com.filezen.files.ui.sync.SyncScreen
 import com.filezen.files.ui.power.PowerAccessScreen
 import com.filezen.files.ui.delta.DeltaScreen
 import com.filezen.files.ui.fingerprint.FingerprintScreen
+import com.filezen.files.ui.typecheck.TypeCheckScreen
+import com.filezen.files.ui.drivecheck.DriveCheckScreen
 object Routes {
     const val HOME = "home"
     const val INBOX = "inbox"
@@ -80,6 +82,8 @@ object Routes {
     const val POWER = "power"
     const val DELTA = "delta"
     const val FINGERPRINT = "fingerprint"
+    const val TYPECHECK = "typecheck"
+    const val DRIVECHECK = "drivecheck"
     const val ARCHIVE = "archive/{path}?inner={inner}"
     fun folder(path: String) = "folder/${Uri.encode(path)}"
     fun preview(path: String) = "preview/${Uri.encode(path)}"
@@ -284,6 +288,8 @@ fun FileZenApp_(appVm: AppViewModel) {
             composable(Routes.POWER) { PowerAccessScreen(nav) }
             composable(Routes.DELTA) { DeltaScreen(nav) }
             composable(Routes.FINGERPRINT) { FingerprintScreen(nav) }
+            composable(Routes.TYPECHECK) { TypeCheckScreen(nav) }
+            composable(Routes.DRIVECHECK) { DriveCheckScreen(nav) }
             composable(
                 Routes.ARCHIVE,
                 arguments = listOf(

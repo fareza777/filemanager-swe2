@@ -32,11 +32,13 @@ fun ToolsScreen(nav: NavController) {
         "Find" to listOf(
             Tool(Icons.Rounded.ManageSearch, "Inside-file search", "Semantic search across document contents", Routes.SEARCH + "?mode=content"),
             Tool(Icons.Rounded.Search, "Search by name", "Instant file search across all storage", Routes.SEARCH),
+            Tool(Icons.Rounded.FactCheck, "True type check", "Real file type from magic bytes — catch disguised files", Routes.TYPECHECK),
         ),
         "Organise" to listOf(
             Tool(Icons.Rounded.Inbox, "Inbox & tidy rules", "Sort rules, auto-sort, watched folders", Routes.RULES),
             Tool(Icons.Rounded.CalendarMonth, "File calendar", "Browse & clean files by date", Routes.CALENDAR),
             Tool(Icons.Rounded.CompareArrows, "Compare folders", "Diff two directories side by side", Routes.COMPARE),
+            Tool(Icons.Rounded.Fingerprint, "Folder fingerprint", "One IPFS CID per folder — verify what changed", Routes.FINGERPRINT),
         ),
         "Privacy" to listOf(
             Tool(Icons.Rounded.PrivacyTip, "Safe share", "View & strip hidden metadata (GPS, camera, author) before sharing", Routes.METACLEAN),
@@ -46,12 +48,12 @@ fun ToolsScreen(nav: NavController) {
             Tool(Icons.Rounded.Collections, "Photo cleaner", "Duplicates, similar shots & blurry photos", Routes.PHOTOCLEAN),
             Tool(Icons.Rounded.DonutLarge, "Storage analyser", "By type, large files, duplicates", Routes.STORAGE),
             Tool(Icons.Rounded.DeleteOutline, "Trash", "Restore or purge deleted files", Routes.TRASH),
+            Tool(Icons.Rounded.SdCard, "Fake drive check", "Verify SD/USB real capacity & speed (F3-style)", Routes.DRIVECHECK),
         ),
         "Transfer & remote" to listOf(
             Tool(Icons.Rounded.Phonelink, "Transfer to PC", "Wi-Fi web page with full file manager", Routes.TRANSFER),
             Tool(Icons.Rounded.Sync, "Folder sync", "Mirror or two-way sync — local or remote folders", Routes.SYNCPAIRS),
             Tool(Icons.Rounded.Difference, "Delta transfer (CDC)", "FastCDC chunks — send only what changed", Routes.DELTA),
-            Tool(Icons.Rounded.Fingerprint, "Folder fingerprint", "One IPFS CID per folder — verify what changed", Routes.FINGERPRINT),
             Tool(Icons.Rounded.Cloud, "Remote storage", "SFTP, SMB, WebDAV, S3 connections", Routes.CONNECTIONS),
             Tool(Icons.Rounded.Splitscreen, "Dual pane", "Two folders side by side — drag files across", Routes.DUALPANE),
             Tool(Icons.Rounded.Terminal, "Power access (Shizuku)", "Open Android/data & restricted folders", Routes.POWER),
