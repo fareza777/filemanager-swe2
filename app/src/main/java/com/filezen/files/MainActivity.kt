@@ -232,12 +232,14 @@ fun FileZenApp_(appVm: AppViewModel) {
                 }
             }
             composable(
-                Routes.SEARCH + "?type={type}",
-                arguments = listOf(navArgument("type") {
-                    type = NavType.StringType; nullable = true; defaultValue = null
-                }),
+                Routes.SEARCH + "?type={type}&mode={mode}",
+                arguments = listOf(
+                    navArgument("type") { type = NavType.StringType; nullable = true; defaultValue = null },
+                    navArgument("mode") { type = NavType.StringType; nullable = true; defaultValue = null },
+                ),
             ) { back ->
-                SearchScreen(nav, appVm, back.arguments?.getString("type"))
+                SearchScreen(nav, appVm, back.arguments?.getString("type"),
+                    presetMode = back.arguments?.getString("mode"))
             }
             composable(
                 Routes.PREVIEW,

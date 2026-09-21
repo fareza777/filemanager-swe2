@@ -33,12 +33,17 @@ fun SearchScreen(
     nav: NavController,
     appVm: AppViewModel,
     presetType: String? = null,
+    presetMode: String? = null,
     vm: SearchViewModel = viewModel(),
 ) {
     val filter by vm.filter.collectAsState()
     val results by vm.results.collectAsState()
     val searching by vm.searching.collectAsState()
     val recentQueries by vm.recentQueries.collectAsState()
+    val mode by vm.mode.collectAsState()
+    val hits by vm.hits.collectAsState()
+    val indexProgress by vm.indexProgress.collectAsState()
+    val indexedFiles by vm.indexedFiles.collectAsState()
 
     var query by remember { mutableStateOf("") }
     var selectedTypes by remember { mutableStateOf(setOf<FileType>()) }
@@ -57,7 +62,8 @@ fun SearchScreen(
         }
     }
 
-    LaunchedEffect(presetType) {
+    LaunchedEffect(presetType, presetMode) {
+        if (presetMode == "content") vm.setMode("content")
         presetType?.let { t ->
             runCatching { FileType.valueOf(t) }.getOrNull()?.let { ft ->
                 selectedTypes = setOf(ft)
@@ -68,6 +74,7 @@ fun SearchScreen(
     }
 
     fun runSearch() {
+        if (mode == "content") { vm.contentSearch(query); return }
         val min = minSizeMb.toLongOrNull()?.times(1024 * 1024)
         vm.setFilter(
             filter.copy(
@@ -114,13 +121,70 @@ fun SearchScreen(
                         Icon(Icons.Rounded.Close, "Clear")
                     }
                 },
-                placeholder = { Text("File name…") },
+                placeholder = { Text(if (mode == "content") "Inside documents…" else "File name…") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             )
 
-            // Filters
-            Row(
+            SingleChoiceSegmentedButtonRow(
+                Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+            ) {
+                SegmentedButton(
+                    selected = mode == "name",
+                    onClick = { vm.setMode("name"); runSearch() },
+                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                    icon = { Icon(Icons.Rounded.Abc, null, Modifier.size(18.dp)) },
+                ) { Text("By name") }
+                SegmentedButton(
+                    selected = mode == "content",
+                    onClick = { vm.setMode("content"); runSearch() },
+                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                    icon = { Icon(Icons.Rounded.Article, null, Modifier.size(18.dp)) },
+                ) { Text("Inside files") }
+            }
+
+            if (mode == "content") {
+                val p = indexProgress
+                ElevatedCard(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    shape = MaterialTheme.shapes.large,
+                ) {
+                    Row(
+                        Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Icon(Icons.Rounded.ManageSearch, null,
+                            tint = MaterialTheme.colorScheme.primary)
+                        Column(Modifier.weight(1f)) {
+                            if (p != null) {
+                                Text("Indexing documents… ${p.done}/${p.total}",
+                                    style = MaterialTheme.typography.labelLarge)
+                                if (p.current.isNotEmpty())
+                                    Text(p.current, style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1)
+                                LinearProgressIndicator(
+                                    progress = { if (p.total > 0) p.done.toFloat() / p.total else 0f },
+                                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                                )
+                            } else {
+                                Text("$indexedFiles documents indexed",
+                                    style = MaterialTheme.typography.labelLarge)
+                                Text("Semantic search — finds words inside PDFs, docs, notes & code",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                        if (p == null) {
+                            TextButton(onClick = { vm.rebuildIndex() }) { Text("Rebuild") }
+                        }
+                    }
+                }
+            }
+
+            // Filters (name mode only — content mode ignores them)
+            if (mode == "name") Row(
                 Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -150,7 +214,7 @@ fun SearchScreen(
                     label = { Text("Downloads only") },
                 )
             }
-            Row(
+            if (mode == "name") Row(
                 Modifier.padding(horizontal = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -179,6 +243,47 @@ fun SearchScreen(
             if (searching) LinearProgressIndicator(Modifier.fillMaxWidth())
 
             when {
+                mode == "content" -> when {
+                    hits.isEmpty() && !searching && query.isNotBlank() ->
+                        EmptyState(Icons.Rounded.SearchOff, "No matching content",
+                            "Try different words — the index covers document text, not file names.")
+                    hits.isEmpty() && !searching && indexProgress != null ->
+                        EmptyState(Icons.Rounded.ManageSearch, "Building index…",
+                            "First-time document indexing is running above.")
+                    hits.isEmpty() ->
+                        EmptyState(Icons.Rounded.Article, "Search inside files",
+                            "Type a phrase — matches come from inside your documents' text.")
+                    else -> LazyColumn(Modifier.fillMaxSize()) {
+                        items(hits, key = { it.path }) { h ->
+                            ListItem(
+                                modifier = Modifier.clickable { nav.navigate(Routes.preview(h.path)) },
+                                headlineContent = {
+                                    Text(File(h.path).name, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                },
+                                supportingContent = {
+                                    Column {
+                                        Text(h.snippet, maxLines = 2,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Text(File(h.path).parent ?: "", maxLines = 1,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                },
+                                leadingContent = {
+                                    Icon(Icons.Rounded.Article, null,
+                                        tint = MaterialTheme.colorScheme.primary)
+                                },
+                                trailingContent = {
+                                    Text("${(h.score * 100).toInt()}%",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.primary)
+                                },
+                            )
+                        }
+                        item { Spacer(Modifier.height(96.dp)) }
+                    }
+                }
                 results.isEmpty() && !searching && (query.isNotBlank() || selectedTypes.isNotEmpty()) ->
                     EmptyState(Icons.Rounded.SearchOff, "No matches", "Try a different name or remove some filters.")
                 results.isEmpty() ->

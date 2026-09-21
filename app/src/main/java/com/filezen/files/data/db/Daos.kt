@@ -149,3 +149,36 @@ interface FileIndexDao {
     @Query("SELECT * FROM file_index ORDER BY lastModified DESC LIMIT :limit")
     suspend fun allRows(limit: Int = 50000): List<FileIndexEntry>
 }
+
+@Dao
+interface DocIndexDao {
+    @Query("SELECT * FROM doc_manifest")
+    suspend fun manifest(): List<DocManifest>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun putManifest(e: DocManifest)
+
+    @Query("DELETE FROM doc_manifest WHERE path = :path")
+    suspend fun removeManifest(path: String)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertChunks(c: List<DocChunk>)
+
+    @Query("DELETE FROM doc_chunks WHERE path = :path")
+    suspend fun removeChunks(path: String)
+
+    @Query("SELECT COUNT(*) FROM doc_chunks")
+    suspend fun chunkCount(): Int
+
+    @Query("SELECT COUNT(DISTINCT path) FROM doc_chunks")
+    fun indexedFileCount(): Flow<Int>
+
+    @Query("SELECT * FROM doc_chunks")
+    suspend fun allChunks(): List<DocChunk>
+
+    @Query("DELETE FROM doc_chunks")
+    suspend fun clearChunks()
+
+    @Query("DELETE FROM doc_manifest")
+    suspend fun clearManifest()
+}

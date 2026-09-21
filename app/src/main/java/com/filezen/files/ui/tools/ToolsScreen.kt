@@ -29,6 +29,10 @@ fun ToolsScreen(nav: NavController) {
                     val route: String)
 
     val groups = listOf(
+        "Find" to listOf(
+            Tool(Icons.Rounded.ManageSearch, "Inside-file search", "Semantic search across document contents", Routes.SEARCH + "?mode=content"),
+            Tool(Icons.Rounded.Search, "Search by name", "Instant file search across all storage", Routes.SEARCH),
+        ),
         "Organise" to listOf(
             Tool(Icons.Rounded.Inbox, "Inbox & tidy rules", "Sort rules, auto-sort, watched folders", Routes.RULES),
             Tool(Icons.Rounded.CalendarMonth, "File calendar", "Browse & clean files by date", Routes.CALENDAR),

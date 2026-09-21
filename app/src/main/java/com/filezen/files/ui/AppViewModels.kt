@@ -586,12 +586,42 @@ class SearchViewModel : ViewModel() {
     private val _searching = MutableStateFlow(false)
     val searching: StateFlow<Boolean> = _searching
 
+    // Content (semantic inside-files) mode
+    private val _mode = MutableStateFlow("name") // name | content
+    val mode: StateFlow<String> = _mode
+    private val _hits = MutableStateFlow<List<com.filezen.files.core.semsearch.ContentIndex.Hit>>(emptyList())
+    val hits: StateFlow<List<com.filezen.files.core.semsearch.ContentIndex.Hit>> = _hits
+    val indexProgress = c.contentIndex.progress
+    val indexedFiles = c.contentIndex.indexedFiles
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
     val recentQueries = c.settings.recentQueries
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private var job: Job? = null
+    private var cJob: Job? = null
 
     fun setFilter(f: SearchFilter) { _filter.value = f }
+
+    fun setMode(m: String) {
+        _mode.value = m
+        if (m == "content") {
+            // Kick an incremental index refresh if nothing is indexed yet.
+            viewModelScope.launch { c.contentIndex.sync() }
+        }
+    }
+
+    fun rebuildIndex() { viewModelScope.launch { c.contentIndex.rebuildAll() } }
+
+    fun contentSearch(q: String) {
+        cJob?.cancel()
+        if (q.isBlank()) { _hits.value = emptyList(); return }
+        _searching.value = true
+        cJob = viewModelScope.launch {
+            try { _hits.value = c.contentIndex.search(q.trim()) }
+            finally { _searching.value = false }
+        }
+    }
 
     fun search(roots: List<File>) {
         job?.cancel()

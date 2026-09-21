@@ -77,3 +77,23 @@ data class FileIndexEntry(
     val type: String,
     val parentDir: String,
 )
+
+/** One text chunk of an indexed document (semantic content search). */
+@Entity(tableName = "doc_chunks")
+data class DocChunk(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val path: String,
+    val chunkIx: Int,
+    val title: String,
+    val snippet: String,
+    val embedding: ByteArray,
+)
+
+/** Content-index manifest: which file version produced which chunks. */
+@Entity(tableName = "doc_manifest", primaryKeys = ["path"])
+data class DocManifest(
+    val path: String,
+    val size: Long,
+    val lastModified: Long,
+    val sha256: String,
+)

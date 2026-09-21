@@ -20,6 +20,7 @@ class AppContainer(app: FileZenApp) {
     val billing by lazy { BillingManager(app, settings) }
     val fileIndex by lazy { com.filezen.files.core.scan.FileIndex(db) }
     val transfer by lazy { com.filezen.files.core.transfer.TransferServer() }
+    val contentIndex by lazy { com.filezen.files.core.semsearch.ContentIndex(app, db) }
 }
 
 class FileZenApp : Application() {
@@ -35,7 +36,11 @@ class FileZenApp : Application() {
         // calendar read it instantly; scanning is incremental & cancellable.
         kotlinx.coroutines.CoroutineScope(
             kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO
-        ).launch { runCatching { container.fileIndex.rebuild() } }
+        ).launch {
+            runCatching { container.fileIndex.rebuild() }
+            // Then refresh the document-content index (incremental — cheap once built).
+            runCatching { container.contentIndex.sync() }
+        }
     }
 
     companion object {

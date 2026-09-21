@@ -15,8 +15,8 @@ android {
         applicationId = "com.filezen.files"
         minSdk = 26
         targetSdk = 35
-        versionCode = 10
-        versionName = "1.3.0"
+        versionCode = 11
+        versionName = "1.4.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // PRODUCTION TODO: replace with your real AdMob App ID from
@@ -104,10 +104,19 @@ dependencies {
     implementation("org.nanohttpd:nanohttpd:2.3.1")
 
     // Remote storage backends (Twig-style: one Fs interface per source).
-    implementation("com.github.mwiede:jsch:0.2.24")          // SFTP
+    implementation("com.github.mwiede:jsch:0.2.24") {          // SFTP
+        // pdfbox already brings bcprov-jdk18on; jsch's older jdk15to18 clashes.
+        exclude(group = "org.bouncycastle", module = "bcprov-jdk15to18")
+    }
     implementation("eu.agno3.jcifs:jcifs-ng:2.1.10")         // SMB
     // HttpURLConnection cannot send PROPFIND — WebDAV needs a real HTTP client.
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0") { // content search: PDF text
+        // Ships both bcprov-jdk15to18:1.72 and bcprov-jdk18on:1.76 — keep jdk18on only.
+        exclude(group = "org.bouncycastle", module = "bcpkix-jdk15to18")
+        exclude(group = "org.bouncycastle", module = "bcutil-jdk15to18")
+        exclude(group = "org.bouncycastle", module = "bcprov-jdk15to18")
+    }
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")

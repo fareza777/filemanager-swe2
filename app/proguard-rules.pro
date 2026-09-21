@@ -13,3 +13,6 @@
 # jcifs-ng uses slf4j optionally — no binder on Android
 -dontwarn org.slf4j.**
 -dontwarn jcifs.**
+-dontwarn com.tom_roush.pdfbox.**
+-dontwarn org.bouncycastle.**
+-dontwarn com.google.common.**
