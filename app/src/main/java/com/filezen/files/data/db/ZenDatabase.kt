@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 
 @Database(
     entities = [InboxItem::class, Favorite::class, TrashEntry::class, OperationRecord::class, SortRule::class, HashCache::class, FileIndexEntry::class, DocChunk::class, DocManifest::class],
-    version = 4,
+    version = 6,
     exportSchema = false,
 )
 abstract class ZenDatabase : RoomDatabase() {
@@ -34,10 +34,27 @@ abstract class ZenDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_4_5 = object : androidx.room.migration.Migration(4, 5) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE doc_chunks ADD COLUMN terms TEXT NOT NULL DEFAULT ''")
+                // Old rows have no terms — force a full re-index on next sync.
+                db.execSQL("DELETE FROM doc_chunks")
+                db.execSQL("DELETE FROM doc_manifest")
+            }
+        }
+
+        private val MIGRATION_5_6 = object : androidx.room.migration.Migration(5, 6) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                // Indexer now rejects binary junk and stores better terms — re-index.
+                db.execSQL("DELETE FROM doc_chunks")
+                db.execSQL("DELETE FROM doc_manifest")
+            }
+        }
+
         @Volatile private var inst: ZenDatabase? = null
         fun get(ctx: Context): ZenDatabase = inst ?: synchronized(this) {
             inst ?: Room.databaseBuilder(ctx, ZenDatabase::class.java, "filezen.db")
-                .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                 .fallbackToDestructiveMigration()
                 .build().also { inst = it }
         }

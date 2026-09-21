@@ -171,7 +171,7 @@ fun SearchScreen(
                             } else {
                                 Text("$indexedFiles documents indexed",
                                     style = MaterialTheme.typography.labelLarge)
-                                Text("Semantic search — finds words inside PDFs, docs, notes & code",
+                                Text("Semantic search — % shows how closely the document's text matches your query",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
@@ -275,9 +275,15 @@ fun SearchScreen(
                                         tint = MaterialTheme.colorScheme.primary)
                                 },
                                 trailingContent = {
-                                    Text("${(h.score * 100).toInt()}%",
-                                        style = MaterialTheme.typography.labelLarge,
-                                        color = MaterialTheme.colorScheme.primary)
+                                    Column(horizontalAlignment = Alignment.End) {
+                                        Text("${(h.score * 100).toInt()}%",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            fontWeight = FontWeight.Bold)
+                                        Text("match",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
                                 },
                             )
                         }

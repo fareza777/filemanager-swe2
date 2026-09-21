@@ -87,6 +87,8 @@ data class DocChunk(
     val title: String,
     val snippet: String,
     val embedding: ByteArray,
+    /** Space-joined token list — used for query-term coverage scoring. */
+    val terms: String = "",
 )
 
 /** Content-index manifest: which file version produced which chunks. */

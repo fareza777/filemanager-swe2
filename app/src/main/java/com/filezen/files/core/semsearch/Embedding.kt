@@ -25,6 +25,10 @@ object Embedding {
         "ini", "itu", "atau", "tidak", "ada", "pada",
     )
 
+    /** Tokenise text into searchable terms (lowercased, stop-words removed). */
+    fun terms(text: String): List<String> =
+        tokenize(text.lowercase().replace(Regex("[\\p{Punct}\\s]+"), " ").trim())
+
     fun embed(text: String): FloatArray {
         val cleaned = text.lowercase()
             .replace(Regex("[\\p{Punct}\\s]+"), " ").trim()

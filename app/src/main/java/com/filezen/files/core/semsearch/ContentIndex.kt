@@ -107,7 +107,7 @@ class ContentIndex(private val app: Context, private val db: ZenDatabase) {
 
     private suspend fun indexFile(f: File, dao: DocIndexDao) {
         val text = extractText(f)?.take(MAX_TEXT_CHARS) ?: return
-        if (text.isBlank()) return
+        if (text.isBlank() || !mostlyText(text)) return
         val sha = sha256(f)
         dao.removeChunks(f.absolutePath)
         val chunks = ArrayList<DocChunk>()
@@ -119,6 +119,7 @@ class ContentIndex(private val app: Context, private val db: ZenDatabase) {
                 path = f.absolutePath, chunkIx = ix, title = title,
                 snippet = part.take(280).replace(Regex("\\s+"), " "),
                 embedding = Embedding.pack(Embedding.embed("$title $part")),
+                terms = Embedding.terms(part).joinToString(" "),
             )
             i += CHUNK; ix++
             if (ix % 10 == 0) currentCoroutineContext().ensureActive()
@@ -129,15 +130,41 @@ class ContentIndex(private val app: Context, private val db: ZenDatabase) {
 
     suspend fun search(query: String, k: Int = 40): List<Hit> = withContext(Dispatchers.Default) {
         val qv = Embedding.embed(query)
+        val qTerms = Embedding.terms(query).toSet()
         val best = HashMap<String, Hit>()
         for (c in db.docIndex().allChunks()) {
-            val s = Embedding.cosine(qv, Embedding.unpack(c.embedding))
-            if (s < MIN_SCORE) continue
+            val sim = Embedding.cosine(qv, Embedding.unpack(c.embedding))
+            // Coverage: fraction of query terms literally present in the chunk's
+            // tokens. Pure cosine on a hashed bucket space produces false
+            // positives for unrelated docs, so gate on coverage.
+            val cov = if (qTerms.isEmpty() || c.terms.isBlank()) 0f
+                else {
+                    val ct = c.terms.split(' ').toSet()
+                    qTerms.count { q -> ct.any { termMatch(q, it) } }
+                        .toFloat() / qTerms.size
+                }
+            if (cov <= 0f && sim < 0.45f) continue
+            val score = (sim * 0.6f + cov * 0.4f).coerceIn(0f, 1f)
+            if (score < MIN_SCORE) continue
             val prev = best[c.path]
-            if (prev == null || s > prev.score)
-                best[c.path] = Hit(c.path, c.title.substringBeforeLast(" #"), s, c.snippet)
+            if (prev == null || score > prev.score)
+                best[c.path] = Hit(c.path, c.title.substringBeforeLast(" #"), score, c.snippet)
         }
         best.values.sortedByDescending { it.score }.take(k)
+    }
+
+    /**
+     * Term match for coverage: exact, one contains the other with the longer
+     * being a prefix-extension (>=4 shared leading chars), avoiding false
+     * hits like query "jumantik" matching token "umant" or single letters.
+     */
+    private fun termMatch(q: String, t: String): Boolean {
+        if (q == t) return true
+        if (t.length >= 3 && t.contains(q)) return true
+        var i = 0
+        val n = minOf(q.length, t.length)
+        while (i < n && q[i] == t[i]) i++
+        return i >= 4
     }
 
     // ---------- text extraction ----------
@@ -175,6 +202,16 @@ class ContentIndex(private val app: Context, private val db: ZenDatabase) {
                 .replace(Regex("&gt;"), ">").replace(Regex("&quot;"), "\"")
         }
     } catch (_: Throwable) { null }
+
+    /** Reject binary junk mislabeled .txt — most chars must be printable. */
+    private fun mostlyText(text: String): Boolean {
+        val sample = text.take(4000)
+        if (sample.isEmpty()) return false
+        val bad = sample.count { ch ->
+            ch == '\uFFFD' || (ch.isISOControl() && ch != '\n' && ch != '\t')
+        }
+        return bad.toFloat() / sample.length < 0.05f
+    }
 
     private fun sha256(f: File): String {
         val md = MessageDigest.getInstance("SHA-256")
