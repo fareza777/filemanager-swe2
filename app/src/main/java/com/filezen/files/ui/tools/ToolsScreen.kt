@@ -33,6 +33,7 @@ fun ToolsScreen(nav: NavController) {
             Tool(Icons.Rounded.ManageSearch, "Inside-file search", "Semantic search across document contents", Routes.SEARCH + "?mode=content"),
             Tool(Icons.Rounded.Search, "Search by name", "Instant file search across all storage", Routes.SEARCH),
             Tool(Icons.Rounded.FactCheck, "True type check", "Real file type from magic bytes — catch disguised files", Routes.TYPECHECK),
+            Tool(Icons.Rounded.Fingerprint, "Similar files", "TLSH fuzzy DNA + imohash fast duplicate pre-scan", Routes.SIMILAR),
         ),
         "Organise" to listOf(
             Tool(Icons.Rounded.Inbox, "Inbox & tidy rules", "Sort rules, auto-sort, watched folders", Routes.RULES),
@@ -64,6 +65,8 @@ fun ToolsScreen(nav: NavController) {
         ),
         "More" to listOf(
             Tool(Icons.Rounded.FolderZip, "Open archive as folder", "Browse ZIP / TAR without extracting", Routes.BROWSE),
+            Tool(Icons.Rounded.Compress, "Zstd archive", "Seekable .zst compress / decompress", Routes.ZSTD),
+            Tool(Icons.Rounded.Android, "App backup", "Export installed apps as .apk files", Routes.APPBACKUP),
             Tool(Icons.Rounded.History, "Operation history", "Success / failure log", Routes.HISTORY),
             Tool(Icons.Rounded.Settings, "Settings", "Theme, view, hidden files", Routes.SETTINGS),
         ),

@@ -57,6 +57,9 @@ import com.filezen.files.ui.typecheck.TypeCheckScreen
 import com.filezen.files.ui.drivecheck.DriveCheckScreen
 import com.filezen.files.ui.shield.ShieldScreen
 import com.filezen.files.ui.timemachine.TimeMachineScreen
+import com.filezen.files.ui.similar.SimilarScreen
+import com.filezen.files.ui.zstd.ZstdScreen
+import com.filezen.files.ui.appbackup.AppBackupScreen
 object Routes {
     const val HOME = "home"
     const val INBOX = "inbox"
@@ -88,6 +91,9 @@ object Routes {
     const val DRIVECHECK = "drivecheck"
     const val SHIELD = "shield"
     const val TIMEMACHINE = "timemachine"
+    const val SIMILAR = "similar"
+    const val ZSTD = "zstd"
+    const val APPBACKUP = "appbackup"
     const val ARCHIVE = "archive/{path}?inner={inner}"
     fun folder(path: String) = "folder/${Uri.encode(path)}"
     fun preview(path: String) = "preview/${Uri.encode(path)}"
@@ -296,6 +302,9 @@ fun FileZenApp_(appVm: AppViewModel) {
             composable(Routes.DRIVECHECK) { DriveCheckScreen(nav) }
             composable(Routes.SHIELD) { ShieldScreen(nav) }
             composable(Routes.TIMEMACHINE) { TimeMachineScreen(nav) }
+            composable(Routes.SIMILAR) { SimilarScreen(nav) }
+            composable(Routes.ZSTD) { ZstdScreen(nav) }
+            composable(Routes.APPBACKUP) { AppBackupScreen(nav) }
             composable(
                 Routes.ARCHIVE,
                 arguments = listOf(

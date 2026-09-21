@@ -15,8 +15,8 @@ android {
         applicationId = "com.filezen.files"
         minSdk = 26
         targetSdk = 35
-        versionCode = 18
-        versionName = "1.4.7"
+        versionCode = 19
+        versionName = "1.5.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // PRODUCTION TODO: replace with your real AdMob App ID from
@@ -115,6 +115,8 @@ dependencies {
     implementation("eu.agno3.jcifs:jcifs-ng:2.1.10")         // SMB
     // HttpURLConnection cannot send PROPFIND — WebDAV needs a real HTTP client.
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.github.luben:zstd-jni:1.5.7-3@aar") // seekable zstd — Android AAR packs the native .so into jniLibs
+    testImplementation("com.github.luben:zstd-jni:1.5.7-3") // plain jar (bundled linux .so) for JVM unit tests
     implementation("com.tom-roush:pdfbox-android:2.0.27.0") { // content search: PDF text
         // Ships both bcprov-jdk15to18:1.72 and bcprov-jdk18on:1.76 — keep jdk18on only.
         exclude(group = "org.bouncycastle", module = "bcpkix-jdk15to18")
