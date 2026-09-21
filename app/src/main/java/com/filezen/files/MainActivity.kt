@@ -48,6 +48,8 @@ import com.filezen.files.ui.dualpane.DualPaneScreen
 import com.filezen.files.ui.archive.ArchiveScreen
 import com.filezen.files.ui.compare.CompareScreen
 import com.filezen.files.ui.privacy.PrivacyScreen
+import com.filezen.files.ui.cleaner.PhotoCleanerScreen
+import com.filezen.files.ui.sync.SyncScreen
 object Routes {
     const val HOME = "home"
     const val INBOX = "inbox"
@@ -70,6 +72,8 @@ object Routes {
     const val DUALPANE = "dualpane"
     const val COMPARE = "compare"
     const val METACLEAN = "metaclean"
+    const val PHOTOCLEAN = "photoclean"
+    const val SYNCPAIRS = "sync"
     const val ARCHIVE = "archive/{path}?inner={inner}"
     fun folder(path: String) = "folder/${Uri.encode(path)}"
     fun preview(path: String) = "preview/${Uri.encode(path)}"
@@ -269,6 +273,8 @@ fun FileZenApp_(appVm: AppViewModel) {
             composable(Routes.DUALPANE) { DualPaneScreen(nav, appVm) }
             composable(Routes.COMPARE) { CompareScreen(nav) }
             composable(Routes.METACLEAN) { PrivacyScreen(nav, appVm) }
+            composable(Routes.PHOTOCLEAN) { PhotoCleanerScreen(nav, appVm) }
+            composable(Routes.SYNCPAIRS) { SyncScreen(nav, appVm) }
             composable(
                 Routes.ARCHIVE,
                 arguments = listOf(

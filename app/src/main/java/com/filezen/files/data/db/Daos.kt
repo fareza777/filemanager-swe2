@@ -182,3 +182,45 @@ interface DocIndexDao {
     @Query("DELETE FROM doc_manifest")
     suspend fun clearManifest()
 }
+
+@Dao
+interface SyncPairDao {
+    @Query("SELECT * FROM sync_pairs ORDER BY name COLLATE NOCASE")
+    fun all(): Flow<List<SyncPair>>
+
+    @Query("SELECT * FROM sync_pairs WHERE enabled = 1")
+    suspend fun enabledPairs(): List<SyncPair>
+
+    @Query("SELECT * FROM sync_pairs WHERE id = :id")
+    suspend fun byId(id: Long): SyncPair?
+
+    @Insert
+    suspend fun insert(p: SyncPair): Long
+
+    @Update
+    suspend fun update(p: SyncPair)
+
+    @Delete
+    suspend fun delete(p: SyncPair)
+
+    @Query("UPDATE sync_pairs SET lastSyncTime = :time, lastStatus = :status WHERE id = :id")
+    suspend fun updateStatus(id: Long, time: Long, status: String)
+}
+
+@Dao
+interface SyncStateDao {
+    @Query("SELECT * FROM sync_state WHERE pairId = :pairId")
+    suspend fun stateFor(pairId: Long): List<SyncStateEntry>
+
+    @Query("DELETE FROM sync_state WHERE pairId = :pairId")
+    suspend fun clear(pairId: Long)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun putAll(rows: List<SyncStateEntry>)
+
+    @Transaction
+    suspend fun replace(pairId: Long, rows: List<SyncStateEntry>) {
+        clear(pairId)
+        putAll(rows)
+    }
+}

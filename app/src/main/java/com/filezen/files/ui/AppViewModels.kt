@@ -713,3 +713,112 @@ class SearchViewModel : ViewModel() {
 
     fun cancel() { job?.cancel(); _searching.value = false }
 }
+
+/** Photo cleaner (ClearLens port): scans images, groups dupes/similar/low-quality. */
+class CleanerViewModel : ViewModel() {
+    private val c get() = FileZenApp.c
+
+    private val _scanning = MutableStateFlow(false)
+    val scanning: StateFlow<Boolean> = _scanning
+    private val _progress = MutableStateFlow("")
+    val progress: StateFlow<String> = _progress
+    private val _report = MutableStateFlow<com.filezen.files.core.cleaner.PhotoLens.ScanReport?>(null)
+    val report: StateFlow<com.filezen.files.core.cleaner.PhotoLens.ScanReport?> = _report
+
+    private val _selected = MutableStateFlow<Set<String>>(emptySet())
+    val selected: StateFlow<Set<String>> = _selected
+
+    private var scanJob: Job? = null
+
+    init { scan() }
+
+    fun scan() {
+        scanJob?.cancel()
+        scanJob = viewModelScope.launch(Dispatchers.Default) {
+            _scanning.value = true
+            _report.value = null
+            _selected.value = emptySet()
+            try {
+                _progress.value = "Finding photos…"
+                val rows = c.db.fileIndex().allRows()
+                    .filter { it.type == "IMAGE" && File(it.path).isFile }
+                _progress.value = "Analysing ${rows.size} photos…"
+                val favs = c.db.favorites().all().first().map { it.path }.toSet()
+                val photos = mutableListOf<com.filezen.files.core.cleaner.PhotoLens.LensPhoto>()
+                var failed = 0
+                rows.forEachIndexed { i, row ->
+                    if (i % 20 == 0) _progress.value = "Analysing ${i}/${rows.size}"
+                    val f = File(row.path)
+                    val bmp = com.filezen.files.core.cleaner.PhotoLens.decodeThumbnail(f)
+                    val m = bmp?.let { com.filezen.files.core.cleaner.PhotoLens.metrics(it) }
+                    bmp?.recycle()
+                    if (m == null) failed++
+                    photos += com.filezen.files.core.cleaner.PhotoLens.LensPhoto(
+                        path = row.path, name = row.name, sizeBytes = row.size,
+                        lastModified = row.lastModified,
+                        isFavourite = row.path in favs, metrics = m,
+                    )
+                }
+                _progress.value = "Grouping…"
+                val groups = mutableListOf<com.filezen.files.core.cleaner.PhotoLens.FindingGroup>()
+                groups += com.filezen.files.core.cleaner.PhotoLens.findExactDuplicates(photos)
+                // Exact-duplicate members are removed from the similar pass.
+                val exactMembers = groups.flatMap { g -> g.photos.map { it.path } }.toSet()
+                val rest = photos.filter { it.path !in exactMembers }
+                groups += com.filezen.files.core.cleaner.PhotoLens.findSimilar(rest)
+                val similarMembers = groups.flatMap { g -> g.photos.map { it.path } }.toSet()
+                groups += rest.filter { it.path !in similarMembers }
+                    .mapNotNull { com.filezen.files.core.cleaner.PhotoLens.classifyLowQuality(it) }
+                _report.value = com.filezen.files.core.cleaner.PhotoLens.ScanReport(
+                    scanned = photos.size, failed = failed, groups = groups,
+                )
+                // Pre-select recommendations (exact + similar only; quality starts unselected).
+                _selected.value = groups.flatMap { it.recommendedDeletePaths }.toSet()
+            } finally { _scanning.value = false }
+        }
+    }
+
+    fun toggle(path: String) { _selected.value = _selected.value.let { if (path in it) it - path else it + path } }
+    fun selectRecommended() {
+        _selected.value = _report.value?.groups?.flatMap { it.recommendedDeletePaths }?.toSet() ?: emptySet()
+    }
+    fun clearSelection() { _selected.value = emptySet() }
+}
+
+/** Folder-pair sync (OpenSync port). */
+class SyncViewModel : ViewModel() {
+    private val c get() = FileZenApp.c
+
+    val pairs: StateFlow<List<SyncPair>> =
+        c.db.syncPairs().all().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val connections = c.settings.remoteConnections
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private val _running = MutableStateFlow<Set<Long>>(emptySet())
+    val running: StateFlow<Set<Long>> = _running
+    private val _progressMsg = MutableStateFlow("")
+    val progressMsg: StateFlow<String> = _progressMsg
+
+    fun addPair(pair: SyncPair) = viewModelScope.launch { c.db.syncPairs().insert(pair) }
+    fun updatePair(pair: SyncPair) = viewModelScope.launch { c.db.syncPairs().update(pair) }
+    fun removePair(pair: SyncPair) = viewModelScope.launch {
+        c.db.syncPairs().delete(pair)
+        c.db.syncState().clear(pair.id)
+    }
+
+    fun runPair(pair: SyncPair) {
+        if (pair.id in _running.value) return
+        viewModelScope.launch(Dispatchers.IO) {
+            _running.value += pair.id
+            try {
+                c.syncRunner.run(pair) { msg, _, _ -> _progressMsg.value = msg }
+            } catch (_: Exception) {
+                // Status is persisted by SyncRunner.
+            } finally {
+                _running.value -= pair.id
+                _progressMsg.value = ""
+            }
+        }
+    }
+}

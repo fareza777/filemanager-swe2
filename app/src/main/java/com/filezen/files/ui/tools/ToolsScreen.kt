@@ -43,11 +43,13 @@ fun ToolsScreen(nav: NavController) {
         ),
         "Free up space" to listOf(
             Tool(Icons.Rounded.AutoAwesome, "Optimise", "Trash, duplicates, compress & convert", Routes.OPTIMISE),
+            Tool(Icons.Rounded.Collections, "Photo cleaner", "Duplicates, similar shots & blurry photos", Routes.PHOTOCLEAN),
             Tool(Icons.Rounded.DonutLarge, "Storage analyser", "By type, large files, duplicates", Routes.STORAGE),
             Tool(Icons.Rounded.DeleteOutline, "Trash", "Restore or purge deleted files", Routes.TRASH),
         ),
         "Transfer & remote" to listOf(
             Tool(Icons.Rounded.Phonelink, "Transfer to PC", "Wi-Fi web page with full file manager", Routes.TRANSFER),
+            Tool(Icons.Rounded.Sync, "Folder sync", "Mirror or two-way sync — local or remote folders", Routes.SYNCPAIRS),
             Tool(Icons.Rounded.Cloud, "Remote storage", "SFTP, SMB, WebDAV, S3 connections", Routes.CONNECTIONS),
             Tool(Icons.Rounded.Splitscreen, "Dual pane", "Two folders side by side — drag files across", Routes.DUALPANE),
         ),

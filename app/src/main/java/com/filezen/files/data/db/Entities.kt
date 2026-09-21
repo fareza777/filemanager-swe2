@@ -99,3 +99,35 @@ data class DocManifest(
     val lastModified: Long,
     val sha256: String,
 )
+
+/**
+ * Folder-sync pair (OpenSync-style): localFolder ↔ remoteFolder. When
+ * remoteConnId is null the remote side is just another local folder.
+ */
+@Entity(tableName = "sync_pairs")
+data class SyncPair(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val localFolder: String,
+    val remoteConnId: Long? = null, // RemoteConnection.id; null = local folder
+    val remoteFolder: String = "",  // remote path or absolute local path
+    val direction: String = "TWO_WAY", // TO_REMOTE | FROM_REMOTE | TWO_WAY
+    val conflictRule: String = "NEWER_WINS", // NEWER_WINS | LOCAL_WINS | REMOTE_WINS | SKIP
+    val deleteOrphans: Boolean = true,
+    val includeSubfolders: Boolean = true,
+    val syncOnOpen: Boolean = false,
+    val enabled: Boolean = true,
+    val lastSyncTime: Long = 0,
+    val lastStatus: String = "",
+)
+
+/** Per-file signature snapshot of the last successful sync (two-way deletes). */
+@Entity(tableName = "sync_state", primaryKeys = ["pairId", "relPath"])
+data class SyncStateEntry(
+    val pairId: Long,
+    val relPath: String,
+    val localSize: Long,
+    val localMtime: Long,
+    val remoteSize: Long,
+    val remoteMtime: Long,
+)

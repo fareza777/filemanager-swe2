@@ -6,8 +6,8 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 
 @Database(
-    entities = [InboxItem::class, Favorite::class, TrashEntry::class, OperationRecord::class, SortRule::class, HashCache::class, FileIndexEntry::class, DocChunk::class, DocManifest::class],
-    version = 6,
+    entities = [InboxItem::class, Favorite::class, TrashEntry::class, OperationRecord::class, SortRule::class, HashCache::class, FileIndexEntry::class, DocChunk::class, DocManifest::class, SyncPair::class, SyncStateEntry::class],
+    version = 7,
     exportSchema = false,
 )
 abstract class ZenDatabase : RoomDatabase() {
@@ -19,6 +19,8 @@ abstract class ZenDatabase : RoomDatabase() {
     abstract fun hashCache(): HashCacheDao
     abstract fun fileIndex(): FileIndexDao
     abstract fun docIndex(): DocIndexDao
+    abstract fun syncPairs(): SyncPairDao
+    abstract fun syncState(): SyncStateDao
 
     companion object {
         private val MIGRATION_2_3 = object : androidx.room.migration.Migration(2, 3) {
@@ -51,10 +53,17 @@ abstract class ZenDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_6_7 = object : androidx.room.migration.Migration(6, 7) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `sync_pairs` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `localFolder` TEXT NOT NULL, `remoteConnId` INTEGER, `remoteFolder` TEXT NOT NULL, `direction` TEXT NOT NULL, `conflictRule` TEXT NOT NULL, `deleteOrphans` INTEGER NOT NULL, `includeSubfolders` INTEGER NOT NULL, `syncOnOpen` INTEGER NOT NULL, `enabled` INTEGER NOT NULL, `lastSyncTime` INTEGER NOT NULL, `lastStatus` TEXT NOT NULL)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS `sync_state` (`pairId` INTEGER NOT NULL, `relPath` TEXT NOT NULL, `localSize` INTEGER NOT NULL, `localMtime` INTEGER NOT NULL, `remoteSize` INTEGER NOT NULL, `remoteMtime` INTEGER NOT NULL, PRIMARY KEY(`pairId`, `relPath`))")
+            }
+        }
+
         @Volatile private var inst: ZenDatabase? = null
         fun get(ctx: Context): ZenDatabase = inst ?: synchronized(this) {
             inst ?: Room.databaseBuilder(ctx, ZenDatabase::class.java, "filezen.db")
-                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                 .fallbackToDestructiveMigration()
                 .build().also { inst = it }
         }
