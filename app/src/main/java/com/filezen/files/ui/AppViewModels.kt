@@ -73,6 +73,56 @@ class AppViewModel : ViewModel() {
             c.fileEngine.delete(paths.map { File(it) }, cb)
         }
     }
+
+    // ---- Shizuku (shell-privileged) ops for restricted folders ----
+
+    /** Copy restricted files OUT to a normal destination (shell `cp -a`). */
+    fun opShellCopy(paths: List<String>, dest: File) {
+        c.ops.launch(OpKind.COPY, "Copying (power access)", paths, dest.path) { cb ->
+            val results = mutableListOf<ItemResult>()
+            paths.forEachIndexed { i, p ->
+                cb(OpProgress(i, paths.size, File(p).name, 0, 0))
+                val ok = c.shizuku.copy(p, File(dest, File(p).name).path)
+                results += ItemResult(p, if (ok) File(dest, File(p).name).path else null,
+                    if (ok) ItemStatus.DONE else ItemStatus.FAILED,
+                    if (ok) null else "shell cp failed")
+            }
+            cb(OpProgress(paths.size, paths.size, "", 0, 0))
+            OpSummary(OpKind.COPY, results)
+        }
+    }
+
+    /** Delete inside a restricted folder (shell `rm -rf`). */
+    fun opShellDelete(paths: List<String>) {
+        c.ops.launch(OpKind.DELETE, "Deleting (power access)", paths, null) { cb ->
+            val results = mutableListOf<ItemResult>()
+            paths.forEachIndexed { i, p ->
+                cb(OpProgress(i, paths.size, File(p).name, 0, 0))
+                val ok = c.shizuku.delete(p)
+                results += ItemResult(p, null,
+                    if (ok) ItemStatus.DONE else ItemStatus.FAILED,
+                    if (ok) null else "shell rm failed")
+            }
+            cb(OpProgress(paths.size, paths.size, "", 0, 0))
+            OpSummary(OpKind.DELETE, results)
+        }
+    }
+
+    /** Move restricted files to a normal destination via shell `mv`/`cp`. */
+    fun opShellMove(paths: List<String>, dest: File) {
+        c.ops.launch(OpKind.MOVE, "Moving (power access)", paths, dest.path) { cb ->
+            val results = mutableListOf<ItemResult>()
+            paths.forEachIndexed { i, p ->
+                cb(OpProgress(i, paths.size, File(p).name, 0, 0))
+                val ok = c.shizuku.move(p, File(dest, File(p).name).path)
+                results += ItemResult(p, if (ok) File(dest, File(p).name).path else null,
+                    if (ok) ItemStatus.DONE else ItemStatus.FAILED,
+                    if (ok) null else "shell mv failed")
+            }
+            cb(OpProgress(paths.size, paths.size, "", 0, 0))
+            OpSummary(OpKind.MOVE, results)
+        }
+    }
     fun opConvert(path: String, target: com.filezen.files.core.convert.ConvertEngine.Target) {
         c.ops.launch(OpKind.CONVERT, "Converting to ${target.label}", listOf(path), null) {
             val r = com.filezen.files.core.convert.ConvertEngine.convert(File(path), target)
@@ -293,6 +343,15 @@ class BrowseViewModel : ViewModel() {
     private val _loading = MutableStateFlow(false)
     val loading: StateFlow<Boolean> = _loading
 
+    /** True when the current folder is only readable via Shizuku shell. */
+    private val _shellMode = MutableStateFlow(false)
+    val shellMode: StateFlow<Boolean> = _shellMode
+    /** True when the folder is unreadable AND Shizuku isn't providing access. */
+    private val _restricted = MutableStateFlow(false)
+    val restricted: StateFlow<Boolean> = _restricted
+    val shizukuStatus = c.shizuku.status.stateIn(viewModelScope, SharingStarted.Eagerly,
+        com.filezen.files.core.shizuku.ShizukuAccess.Status.NOT_INSTALLED)
+
     private val _selection = MutableStateFlow<Set<String>>(emptySet())
     val selection: StateFlow<Set<String>> = _selection
 
@@ -339,20 +398,45 @@ class BrowseViewModel : ViewModel() {
 
     fun refresh() = load(_path.value)
 
+    private var loadJob: Job? = null
+
     private fun load(p: String) {
+        // A new navigation must win over an older in-flight load (init loads
+        // the last-browse path in parallel with LaunchedEffect's navigate).
+        loadJob?.cancel()
         _loading.value = true
-        viewModelScope.launch {
+        loadJob = viewModelScope.launch {
             val hidden = showHidden.value
-            val list = withContext(Dispatchers.IO) { Scanner.listDir(p, hidden) }
+            var list = withContext(Dispatchers.IO) { Scanner.listDir(p, hidden) }
+            var shell = false
+            // Restricted folder (Android/data, Android/obb, …): fall back to
+            // Shizuku shell listing when the service is available. Even when
+            // the sandbox can list a dir (e.g. our own package dir under
+            // Android/data), writes still need the shell — engage it for any
+            // path that is unreadable, unwritable, or under a restricted root.
+            val f = File(p)
+            val unreadable = f.listFiles() == null || !f.canRead() || !f.canWrite() ||
+                c.shizuku.isRestrictedPath(p)
+            if (unreadable) {
+                c.shizuku.refreshStatus()
+                if (c.shizuku.ready()) {
+                    list = withContext(Dispatchers.IO) { c.shizuku.list(p, hidden) }
+                    shell = true
+                }
+            }
+            if (p != _path.value) return@launch // stale: a newer load took over
+            _shellMode.value = shell
+            _restricted.value = unreadable && !shell
             _entries.value = sort(list, sortField.value, sortAsc.value)
             _loading.value = false
             _dirSizes.value = emptyMap()
-            if (folderSizes.value) {
+            if (folderSizes.value && !shell) {
                 val dirs = list.filter { it.isDirectory }.take(60)
                 for (d in dirs) {
                     val sz = withContext(Dispatchers.IO) {
                         runCatching { c.fileEngine.sizeOf(File(d.path)) }.getOrDefault(0L)
                     }
+                    if (p != _path.value) return@launch
                     _dirSizes.value = _dirSizes.value + (d.path to sz)
                 }
             }

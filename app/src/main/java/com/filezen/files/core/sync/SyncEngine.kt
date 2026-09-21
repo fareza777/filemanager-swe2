@@ -178,6 +178,10 @@ class FolderSyncEngine(
     private var deleted = 0
     private var conflicts = 0
     private var bytes = 0L
+    // FastCDC delta accounting (local↔local only): bytes the destination
+    // file already contained in chunk form across changed files.
+    private var deltaReused = 0L
+    private var deltaChanged = 0L
 
     private class Scan(
         val files: Map<String, SyncStore.Entry>,
@@ -196,6 +200,9 @@ class FolderSyncEngine(
         val summary = buildString {
             append("Copied $copied, deleted $deleted")
             if (conflicts > 0) append(", $conflicts conflict(s)")
+            if (deltaChanged > 0) {
+                append(", Δ reused ${deltaReused * 100 / deltaChanged}%")
+            }
         }
         return Result(copied, deleted, conflicts, bytes, summary, newState)
     }
@@ -326,6 +333,14 @@ class FolderSyncEngine(
         val df = to.localFile(rel)
         if (sf != null && df != null) {
             df.parentFile?.mkdirs()
+            if (df.exists() && sf.length() >= 256 * 1024) {
+                // FastCDC: how much of the incoming file already exists at the
+                // destination — the delta-transfer accounting from
+                // cdc-file-transfer applied to local syncs.
+                com.filezen.files.core.delta.DeltaEngine.reuseStats(df, sf)?.let {
+                    deltaReused += it.reusedBytes; deltaChanged += it.newSize
+                }
+            }
             sf.copyTo(df, overwrite = true)
             if (mtime > 0) df.setLastModified(mtime)
             return

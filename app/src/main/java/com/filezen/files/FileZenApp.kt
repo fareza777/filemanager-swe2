@@ -22,6 +22,7 @@ class AppContainer(app: FileZenApp) {
     val transfer by lazy { com.filezen.files.core.transfer.TransferServer() }
     val contentIndex by lazy { com.filezen.files.core.semsearch.ContentIndex(app, db) }
     val syncRunner by lazy { com.filezen.files.core.sync.SyncRunner(app, db, settings) }
+    val shizuku by lazy { com.filezen.files.core.shizuku.ShizukuAccess(app) }
 }
 
 class FileZenApp : Application() {

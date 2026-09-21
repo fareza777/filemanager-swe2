@@ -15,8 +15,8 @@ android {
         applicationId = "com.filezen.files"
         minSdk = 26
         targetSdk = 35
-        versionCode = 14
-        versionName = "1.4.3"
+        versionCode = 15
+        versionName = "1.4.4"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // PRODUCTION TODO: replace with your real AdMob App ID from
@@ -102,6 +102,8 @@ dependencies {
     implementation("androidx.media3:media3-ui:1.5.1")
     implementation("androidx.documentfile:documentfile:1.0.1")
     implementation("androidx.exifinterface:exifinterface:1.4.1") // Safe Share metadata cleaner
+    implementation("dev.rikka.shizuku:api:13.1.5")             // Shizuku power access
+    implementation("dev.rikka.shizuku:provider:13.1.5")       // Shizuku binder provider
     // Tiny embedded HTTP server for the Phone ↔ PC browser transfer feature.
     implementation("org.nanohttpd:nanohttpd:2.3.1")
 

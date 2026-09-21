@@ -50,6 +50,8 @@ import com.filezen.files.ui.compare.CompareScreen
 import com.filezen.files.ui.privacy.PrivacyScreen
 import com.filezen.files.ui.cleaner.PhotoCleanerScreen
 import com.filezen.files.ui.sync.SyncScreen
+import com.filezen.files.ui.power.PowerAccessScreen
+import com.filezen.files.ui.delta.DeltaScreen
 object Routes {
     const val HOME = "home"
     const val INBOX = "inbox"
@@ -74,6 +76,8 @@ object Routes {
     const val METACLEAN = "metaclean"
     const val PHOTOCLEAN = "photoclean"
     const val SYNCPAIRS = "sync"
+    const val POWER = "power"
+    const val DELTA = "delta"
     const val ARCHIVE = "archive/{path}?inner={inner}"
     fun folder(path: String) = "folder/${Uri.encode(path)}"
     fun preview(path: String) = "preview/${Uri.encode(path)}"
@@ -275,6 +279,8 @@ fun FileZenApp_(appVm: AppViewModel) {
             composable(Routes.METACLEAN) { PrivacyScreen(nav, appVm) }
             composable(Routes.PHOTOCLEAN) { PhotoCleanerScreen(nav, appVm) }
             composable(Routes.SYNCPAIRS) { SyncScreen(nav, appVm) }
+            composable(Routes.POWER) { PowerAccessScreen(nav) }
+            composable(Routes.DELTA) { DeltaScreen(nav) }
             composable(
                 Routes.ARCHIVE,
                 arguments = listOf(

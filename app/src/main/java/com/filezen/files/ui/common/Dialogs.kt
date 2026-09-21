@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.filezen.files.core.model.formatSize
 import com.filezen.files.data.db.Favorite
 import java.io.File
 
@@ -223,6 +224,90 @@ fun FolderPickerSheet(
             },
             onDismiss = { newFolder = false },
         )
+    }
+}
+
+/**
+ * File picker sheet: like [FolderPickerSheet] but taps pick a FILE —
+ * used by delta patch (base/new) and other single-file flows.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun FilePickerSheet(
+    startPath: String = Environment.getExternalStorageDirectory().absolutePath,
+    filter: (File) -> Boolean = { true },
+    onPick: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var dir by remember {
+        mutableStateOf(File(startPath).let {
+            if (it.isDirectory) it else Environment.getExternalStorageDirectory()
+        })
+    }
+    var kids by remember { mutableStateOf<List<File>>(emptyList()) }
+    LaunchedEffect(dir) {
+        kids = runCatching {
+            dir.listFiles()?.filter { !it.isHidden && (it.isDirectory || filter(it)) }
+                ?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
+        }.getOrNull() ?: emptyList()
+    }
+    val shortcuts = remember {
+        listOf(Environment.DIRECTORY_DOWNLOADS, Environment.DIRECTORY_DOCUMENTS,
+            Environment.DIRECTORY_PICTURES, Environment.DIRECTORY_DCIM)
+            .map { Environment.getExternalStoragePublicDirectory(it) }
+            .filter { it.exists() }
+    }
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Choose file", style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold)
+                Text(dir.absolutePath, style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            IconButton(onClick = { dir.parentFile?.let { if (it.canRead()) dir = it } }) {
+                Icon(Icons.Rounded.ArrowUpward, "Up")
+            }
+        }
+        Row(Modifier.horizontalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            shortcuts.forEach { f ->
+                AssistChip(onClick = { dir = f }, label = { Text(f.name) },
+                    leadingIcon = { Icon(Icons.Rounded.Folder, null, Modifier.size(16.dp)) })
+            }
+        }
+        HorizontalDivider(Modifier.padding(vertical = 4.dp))
+        LazyColumn(Modifier.fillMaxWidth().heightIn(max = 340.dp)) {
+            if (kids.isEmpty()) {
+                item {
+                    Text("Nothing here",
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            items(kids, key = { it.absolutePath }) { f ->
+                ListItem(
+                    headlineContent = { Text(f.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    supportingContent = {
+                        if (!f.isDirectory) Text(formatSize(f.length()),
+                            style = MaterialTheme.typography.labelSmall)
+                    },
+                    leadingContent = {
+                        Icon(if (f.isDirectory) Icons.Rounded.Folder else Icons.Rounded.InsertDriveFile,
+                            null, tint = MaterialTheme.colorScheme.primary)
+                    },
+                    modifier = Modifier.clickable {
+                        if (f.isDirectory) dir = f else onPick(f.absolutePath)
+                    },
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                )
+            }
+        }
+        Spacer(Modifier.height(28.dp))
     }
 }
 

@@ -28,8 +28,11 @@ import com.filezen.files.data.prefs.*
 import com.filezen.files.ui.AppViewModel
 import com.filezen.files.ui.BrowseViewModel
 import com.filezen.files.ui.common.*
+import com.filezen.files.FileZenApp
 import com.filezen.files.ops.Intents
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
@@ -55,6 +58,9 @@ fun BrowseScreen(
     val sortAsc by vm.sortAsc.collectAsState()
     val volumes by vm.volumes.collectAsState()
     val loading by vm.loading.collectAsState()
+    val shellMode by vm.shellMode.collectAsState()
+    val restricted by vm.restricted.collectAsState()
+    val shizukuStatus by vm.shizukuStatus.collectAsState()
     val dirSizes by vm.dirSizes.collectAsState()
     val folderColors by vm.folderColors.collectAsState()
     var colorTarget by remember { mutableStateOf<FileEntry?>(null) }
@@ -122,7 +128,11 @@ fun BrowseScreen(
 
     fun doPaste(dest: String, policy: ConflictPolicy) {
         val cb = clipboard ?: return
-        if (cb.cut) appVm.opMove(cb.paths, File(dest), policy)
+        val shellSrc = cb.paths.any { FileZenApp.c.shizuku.isRestrictedPath(it) }
+        if (shellSrc) {
+            if (cb.cut) appVm.opShellMove(cb.paths, File(dest))
+            else appVm.opShellCopy(cb.paths, File(dest))
+        } else if (cb.cut) appVm.opMove(cb.paths, File(dest), policy)
         else appVm.opCopy(cb.paths, File(dest), policy)
         appVm.setClipboard(emptyList(), false)
     }
@@ -130,6 +140,21 @@ fun BrowseScreen(
     fun openEntry(e: FileEntry) {
         if (selection.isNotEmpty()) { vm.toggleSelect(e.path); return }
         if (e.isDirectory) nav.navigate(Routes.folder(e.path))
+        else if (shellMode) {
+            // Restricted file: pull to cache via Shizuku, then preview locally.
+            scope.launch(Dispatchers.IO) {
+                val tmp = File(ctx.cacheDir, "shellview/${e.name}").apply {
+                    parentFile?.mkdirs(); delete()
+                }
+                if (FileZenApp.c.shizuku.readTo(e.path, tmp)) {
+                    withContext(Dispatchers.Main) {
+                        if (com.filezen.files.core.archive.ArchiveFs.isBrowsable(e.name))
+                            nav.navigate(Routes.archive(tmp.path))
+                        else nav.navigate(Routes.preview(tmp.path))
+                    }
+                }
+            }
+        }
         // Archive-as-folder (Twig-style): browse a ZIP/TAR without extracting.
         else if (com.filezen.files.core.archive.ArchiveFs.isBrowsable(e.name))
             nav.navigate(Routes.archive(e.path))
@@ -250,6 +275,57 @@ fun BrowseScreen(
         Column(Modifier.fillMaxSize().padding(padding)) {
             if (!isRootPicker) {
                 Breadcrumb(path) { p -> if (p == "/") nav.popBackStack() else vm.navigate(p) }
+            }
+
+            // Restricted folder: Shizuku power-access banner.
+            if (restricted) {
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                    shape = RoundedCornerShape(14.dp),
+                ) {
+                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Rounded.Lock, null,
+                            tint = MaterialTheme.colorScheme.onErrorContainer)
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Restricted folder", fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onErrorContainer)
+                            Text(
+                                when (shizukuStatus) {
+                                    com.filezen.files.core.shizuku.ShizukuAccess.Status.NOT_INSTALLED ->
+                                        "Install Shizuku to open this folder"
+                                    com.filezen.files.core.shizuku.ShizukuAccess.Status.NOT_RUNNING ->
+                                        "Start Shizuku, then retry"
+                                    com.filezen.files.core.shizuku.ShizukuAccess.Status.NO_PERMISSION ->
+                                        "Grant FileZen permission in Shizuku"
+                                    else -> "Retry"
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer)
+                        }
+                        TextButton(onClick = {
+                            if (shizukuStatus == com.filezen.files.core.shizuku.ShizukuAccess.Status.NO_PERMISSION) {
+                                com.filezen.files.FileZenApp.c.shizuku.requestPermission()
+                            } else nav.navigate(Routes.POWER)
+                        }) { Text(if (shizukuStatus == com.filezen.files.core.shizuku.ShizukuAccess.Status.NO_PERMISSION) "Grant" else "Set up") }
+                    }
+                }
+            }
+            if (shellMode) {
+                Surface(
+                    color = MaterialTheme.colorScheme.tertiaryContainer,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                    shape = RoundedCornerShape(14.dp),
+                ) {
+                    Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Rounded.Terminal, null, Modifier.size(16.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Power access via Shizuku",
+                            style = MaterialTheme.typography.labelMedium)
+                    }
+                }
             }
 
             // clipboard paste bar
@@ -614,13 +690,21 @@ fun BrowseScreen(
     // ---- dialogs ----
     if (showMkdir) {
         TextInputDialog("New folder", hint = "Folder name", onConfirm = { name ->
-            scope.launch { FileZenEngine.mkdir(File(path), name); vm.refresh() }
+            scope.launch(Dispatchers.IO) {
+                if (shellMode) FileZenApp.c.shizuku.mkdir("$path/$name")
+                else FileZenEngine.mkdir(File(path), name)
+                vm.refresh()
+            }
             showMkdir = false
         }, onDismiss = { showMkdir = false })
     }
     renameTarget?.let { e ->
         TextInputDialog("Rename", initial = e.name, hint = "Name", onConfirm = { newName ->
-            scope.launch { FileZenEngine.rename(File(e.path), newName); vm.refresh() }
+            scope.launch(Dispatchers.IO) {
+                if (shellMode) FileZenApp.c.shizuku.move(e.path, e.path.substringBeforeLast('/') + "/" + newName)
+                else FileZenEngine.rename(File(e.path), newName)
+                vm.refresh()
+            }
             renameTarget = null
         }, onDismiss = { renameTarget = null })
     }
@@ -700,10 +784,15 @@ fun BrowseScreen(
     }
     deleteConfirm?.let { paths ->
         ConfirmDialog(
-            title = "Move to trash?",
-            text = "${paths.size} item(s) will be moved to FileZen trash. You can restore them later.",
-            confirmLabel = "Move to trash",
-            onConfirm = { appVm.opTrash(paths); deleteConfirm = null; vm.clearSelection() },
+            title = if (shellMode) "Delete permanently?" else "Move to trash?",
+            text = if (shellMode)
+                "${paths.size} item(s) in this restricted folder will be deleted permanently via power access — no trash, no undo."
+            else "${paths.size} item(s) will be moved to FileZen trash. You can restore them later.",
+            confirmLabel = if (shellMode) "Delete forever" else "Move to trash",
+            onConfirm = {
+                if (shellMode) appVm.opShellDelete(paths) else appVm.opTrash(paths)
+                deleteConfirm = null; vm.clearSelection()
+            },
             onDismiss = { deleteConfirm = null },
         )
     }
@@ -743,7 +832,8 @@ fun BrowseScreen(
             currentPath = path,
             shareDir = com.filezen.files.FileZenApp.c.transfer.shareDir,
             onPick = { dest ->
-                appVm.opMove(paths, File(dest), ConflictPolicy.KEEP_BOTH)
+                if (shellMode) appVm.opShellMove(paths, File(dest))
+                else appVm.opMove(paths, File(dest), ConflictPolicy.KEEP_BOTH)
                 vm.clearSelection()
                 moveTarget = null
             },
