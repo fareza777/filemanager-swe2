@@ -374,7 +374,15 @@ class BrowseViewModel : ViewModel() {
 
     init {
         viewModelScope.launch {
-            c.settings.lastBrowsePath.first()?.let { if (!navigated && File(it).exists()) _path.value = it }
+            c.settings.lastBrowsePath.first()?.let {
+                // Restoring the last folder must trigger a load, not just move
+                // _path — otherwise the in-flight root load hits the stale check
+                // and leaves the spinner up forever.
+                if (!navigated && File(it).exists() && it != _path.value) {
+                    _path.value = it
+                    load(it)
+                }
+            }
         }
         viewModelScope.launch {
             combine(showHidden, sortField, sortAsc) { a, b, s -> Triple(a, b, s) }.collect {
@@ -406,6 +414,7 @@ class BrowseViewModel : ViewModel() {
         loadJob?.cancel()
         _loading.value = true
         loadJob = viewModelScope.launch {
+            try {
             val hidden = showHidden.value
             var list = withContext(Dispatchers.IO) { Scanner.listDir(p, hidden) }
             var shell = false
@@ -424,7 +433,11 @@ class BrowseViewModel : ViewModel() {
                     shell = true
                 }
             }
-            if (p != _path.value) return@launch // stale: a newer load took over
+            if (p != _path.value) {
+                // Stale — but only clear the spinner if no newer load owns it.
+                if (loadJob === coroutineContext[Job]) _loading.value = false
+                return@launch
+            }
             _shellMode.value = shell
             _restricted.value = unreadable && !shell
             _entries.value = sort(list, sortField.value, sortAsc.value)
@@ -439,6 +452,13 @@ class BrowseViewModel : ViewModel() {
                     if (p != _path.value) return@launch
                     _dirSizes.value = _dirSizes.value + (d.path to sz)
                 }
+            }
+            } catch (ce: kotlinx.coroutines.CancellationException) {
+                throw ce
+            } catch (t: Throwable) {
+                // A failed folder read must clear the spinner — never hang it.
+                if (loadJob === coroutineContext[Job]) _loading.value = false
+                _entries.value = emptyList()
             }
         }
     }

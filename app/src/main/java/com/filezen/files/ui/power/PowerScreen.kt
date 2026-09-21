@@ -129,9 +129,14 @@ fun PowerAccessScreen(nav: NavController) {
                         leadingContent = { Icon(ic, null, tint = MaterialTheme.colorScheme.primary) },
                         trailingContent = { Icon(Icons.Rounded.ChevronRight, null) },
                         modifier = Modifier.clickable {
-                            if (status == ShizukuAccess.Status.READY)
+                            if (status == ShizukuAccess.Status.READY) {
                                 nav.navigate(Routes.folder(p))
-                            else shizuku.refreshStatus()
+                            } else {
+                                shizuku.refreshStatus()
+                                android.widget.Toast.makeText(ctx,
+                                    "Start Shizuku first — see the card above",
+                                    android.widget.Toast.LENGTH_SHORT).show()
+                            }
                         },
                         colors = ListItemDefaults.colors(
                             containerColor = androidx.compose.ui.graphics.Color.Transparent),
