@@ -22,7 +22,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.launch
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
@@ -122,8 +124,15 @@ fun FileZenApp_(appVm: AppViewModel) {
     var hasAccess by remember { mutableStateOf(hasStorageAccess()) }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle) {
-        val obs = LifecycleEventObserver { _, ev ->
-            if (ev == Lifecycle.Event.ON_RESUME) hasAccess = hasStorageAccess()
+        val obs = LifecycleEventObserver { owner, ev ->
+            if (ev == Lifecycle.Event.ON_RESUME) {
+                hasAccess = hasStorageAccess()
+                // Files added while the app was away land in Recent/search
+                // within seconds via this incremental index pass.
+                owner.lifecycleScope.launch {
+                    FileZenApp.c.fileIndex.refresh(FileZenApp.c.fileIndex.hotRoots())
+                }
+            }
         }
         lifecycle.addObserver(obs)
         onDispose { lifecycle.removeObserver(obs) }

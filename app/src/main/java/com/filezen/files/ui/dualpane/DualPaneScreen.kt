@@ -43,7 +43,8 @@ private class PaneState(initial: String) {
 
 /**
  * Twig-style dual-pane: two file lists side-by-side (wide screens) or stacked
- * (portrait). Select files in one pane, copy/move them into the other pane.
+ * (portrait). Tap files to select, tap a folder to open it, then copy/move the
+ * selection into the other pane.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -56,18 +57,35 @@ fun DualPaneScreen(nav: NavController, appVm: AppViewModel) {
         }?.takeIf { it.isNotBlank() }
             ?: Environment.getExternalStorageDirectory().absolutePath
     }
+    // The two panes should start on DIFFERENT folders — copying a folder onto
+    // itself is useless. Right pane prefers Downloads, the usual drop target.
+    val rightDir = remember {
+        val dl = Environment.getExternalStoragePublicDirectory(
+            Environment.DIRECTORY_DOWNLOADS).absolutePath
+        if (startDir != dl) dl else Environment.getExternalStorageDirectory().absolutePath
+    }
     val left = remember { PaneState(startDir) }
-    val right = remember { PaneState(startDir) }
+    val right = remember { PaneState(rightDir) }
     var active by remember { mutableStateOf(0) }        // 0 = left/top, 1 = right/bottom
 
     suspend fun load(p: PaneState) = withContext(Dispatchers.IO) {
-        try { p.entries = Scanner.listDir(p.path, false) }
+        try { p.entries = Scanner.listDir(p.path, false); p.error = null }
         catch (e: Exception) { p.error = e.message; p.entries = emptyList() }
     }
     LaunchedEffect(Unit) { load(left); load(right) }
 
-    suspend fun transfer(dst: PaneState, move: Boolean) {
-        val src = if (dst === left) right else left
+    // Only one pane may hold a selection at a time — keeps "copy to other"
+    // unambiguous.
+    fun selectIn(p: PaneState, other: PaneState, path: String) {
+        p.selection.value = p.selection.value.toMutableSet().apply {
+            if (path in this) remove(path) else add(path)
+        }
+        if (p.selection.value.isNotEmpty()) other.selection.value = emptySet()
+    }
+
+    suspend fun transfer(move: Boolean) {
+        val src = if (left.selection.value.isNotEmpty()) left else right
+        val dst = if (src === left) right else left
         val paths = src.selection.value
         if (paths.isEmpty()) return
         if (move) appVm.opMove(paths.toList(), File(dst.path),
@@ -78,6 +96,9 @@ fun DualPaneScreen(nav: NavController, appVm: AppViewModel) {
         load(dst); load(src)
     }
 
+    val selCount = left.selection.value.size + right.selection.value.size
+    val selSrc = if (left.selection.value.isNotEmpty()) left else right
+    val selDst = if (selSrc === left) right else left
     val wide = LocalConfiguration.current.screenWidthDp >= 600 ||
         LocalConfiguration.current.screenHeightDp < 500
 
@@ -88,21 +109,39 @@ fun DualPaneScreen(nav: NavController, appVm: AppViewModel) {
                 navigationIcon = {
                     IconButton(onClick = { nav.popBackStack() }) { Icon(Icons.Rounded.ArrowBack, "Back") }
                 },
-                actions = {
-                    // Copy / move FROM the other pane's selection INTO here.
-                    IconButton(onClick = { scope.launch { transfer(if (active == 0) left else right, false) } }) {
-                        Icon(Icons.Rounded.ContentCopy, "Copy selected here")
-                    }
-                    IconButton(onClick = { scope.launch { transfer(if (active == 0) left else right, true) } }) {
-                        Icon(Icons.Rounded.DriveFileMove, "Move selected here")
-                    }
-                },
             )
+        },
+        bottomBar = {
+            if (selCount > 0) {
+                Surface(tonalElevation = 3.dp) {
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
+                        Text("$selCount selected → ${selDst.path}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Row(Modifier.fillMaxWidth().padding(top = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Button(onClick = { scope.launch { transfer(false) } },
+                                modifier = Modifier.weight(1f)) {
+                                Icon(Icons.Rounded.ContentCopy, null, Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Copy here")
+                            }
+                            OutlinedButton(onClick = { scope.launch { transfer(true) } },
+                                modifier = Modifier.weight(1f)) {
+                                Icon(Icons.Rounded.DriveFileMove, null, Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Move here")
+                            }
+                        }
+                    }
+                }
+            }
         },
     ) { padding ->
         val panes = listOf(left, right)
         Column(Modifier.fillMaxSize().padding(padding)) {
-            Text("Select files in one pane, tap the other pane, then copy / move.",
+            Text("Tap files to select, tap a folder to open it, then copy / move to the other pane.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
@@ -110,7 +149,8 @@ fun DualPaneScreen(nav: NavController, appVm: AppViewModel) {
                 Row(Modifier.fillMaxSize()) {
                     panes.forEachIndexed { i, p ->
                         Box(Modifier.weight(1f).fillMaxHeight()) {
-                            Pane(p, i, active == i, { active = i }, { load(p) })
+                            Pane(p, i, active == i, { active = i }, { load(p) },
+                                { path -> selectIn(p, panes[1 - i], path) })
                         }
                         if (i == 0) VerticalDivider()
                     }
@@ -119,7 +159,8 @@ fun DualPaneScreen(nav: NavController, appVm: AppViewModel) {
                 Column(Modifier.fillMaxSize()) {
                     panes.forEachIndexed { i, p ->
                         Box(Modifier.weight(1f).fillMaxWidth()) {
-                            Pane(p, i, active == i, { active = i }, { load(p) })
+                            Pane(p, i, active == i, { active = i }, { load(p) },
+                                { path -> selectIn(p, panes[1 - i], path) })
                         }
                         if (i == 0) HorizontalDivider()
                     }
@@ -132,7 +173,8 @@ fun DualPaneScreen(nav: NavController, appVm: AppViewModel) {
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun Pane(p: PaneState, index: Int, active: Boolean,
-                 onFocus: () -> Unit, reload: suspend () -> Unit) {
+                 onFocus: () -> Unit, reload: suspend () -> Unit,
+                 onSelect: (String) -> Unit) {
     val scope = rememberCoroutineScope()
     val parent = File(p.path).parent
     Column(Modifier.fillMaxSize().clickable { onFocus() }) {
@@ -190,20 +232,19 @@ private fun Pane(p: PaneState, index: Int, active: Boolean,
                         .combinedClickable(
                             onClick = {
                                 onFocus()
-                                if (p.selection.value.isNotEmpty()) {
-                                    p.selection.value = p.selection.value.toMutableSet().apply {
-                                        if (sel) remove(e.path) else add(e.path)
-                                    }
-                                } else if (e.isDirectory) {
+                                if (e.isDirectory && !sel) {
                                     p.path = e.path
+                                    p.selection.value = emptySet()
                                     scope.launch { reload() }
+                                } else {
+                                    // Files toggle-select on tap — no
+                                    // long-press needed for the main flow.
+                                    onSelect(e.path)
                                 }
                             },
                             onLongClick = {
                                 onFocus()
-                                p.selection.value = p.selection.value.toMutableSet().apply {
-                                    if (sel) remove(e.path) else add(e.path)
-                                }
+                                onSelect(e.path)
                             },
                         ),
                 )

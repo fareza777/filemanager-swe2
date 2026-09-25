@@ -148,6 +148,13 @@ interface FileIndexDao {
 
     @Query("SELECT * FROM file_index ORDER BY lastModified DESC LIMIT :limit")
     suspend fun allRows(limit: Int = 50000): List<FileIndexEntry>
+
+    /** Every indexed path living under [prefix] — for delta-scan cleanup. */
+    @Query("SELECT path FROM file_index WHERE path LIKE :prefix || '/%'")
+    suspend fun pathsUnder(prefix: String): List<String>
+
+    @Query("DELETE FROM file_index WHERE path IN (:paths)")
+    suspend fun removeAll(paths: List<String>)
 }
 
 @Dao

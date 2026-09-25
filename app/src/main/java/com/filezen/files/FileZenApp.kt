@@ -40,6 +40,9 @@ class FileZenApp : Application() {
             kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO
         ).launch {
             runCatching { container.fileIndex.rebuild() }
+            // Keep the index live: watch the hot roots so new files hit
+            // Recent/search within seconds, not next launch.
+            container.fileIndex.startWatching(this, container.fileIndex.hotRoots())
             // Then refresh the document-content index (incremental — cheap once built).
             runCatching { container.contentIndex.sync() }
             // Folder pairs flagged "sync on open".

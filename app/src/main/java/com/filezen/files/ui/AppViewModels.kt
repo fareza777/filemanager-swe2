@@ -303,11 +303,22 @@ class HomeViewModel : ViewModel() {
             _recent.value = withContext(Dispatchers.IO) {
                 recentViaIndex(40) ?: Scanner.recent(recentRoots(), limit = 40)
             }
+            // Freshness pass: delta-scan the hot roots, then re-read so files
+            // the watcher missed still show up moments later.
+            launch {
+                c.fileIndex.refresh(c.fileIndex.hotRoots())
+                _recent.value = withContext(Dispatchers.IO) {
+                    recentViaIndex(40) ?: Scanner.recent(recentRoots(), limit = 40)
+                }
+            }
         }
     }
 
     fun loadAllRecent() {
         viewModelScope.launch {
+            // Delta-scan first so the Recent page reflects files that arrived
+            // since the last index build — the pass dedups itself cheaply.
+            c.fileIndex.refresh(c.fileIndex.hotRoots())
             _allRecent.value = withContext(Dispatchers.IO) {
                 recentViaIndex(2000) ?: Scanner.recent(recentRoots(), limit = 500)
             }
