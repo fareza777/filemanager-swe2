@@ -1,7 +1,9 @@
 package com.filezen.files.ui.search
 
 import android.os.Environment
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -24,10 +26,12 @@ import com.filezen.files.ui.AppViewModel
 import com.filezen.files.ui.SearchViewModel
 import com.filezen.files.ui.common.EmptyState
 import com.filezen.files.ui.common.FileRow
+import com.filezen.files.ui.common.MassActionsBar
+import com.filezen.files.ui.common.rememberSelection
 import com.filezen.files.ops.Intents
 import java.io.File
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun SearchScreen(
     nav: NavController,
@@ -49,10 +53,8 @@ fun SearchScreen(
     var selectedTypes by remember { mutableStateOf(setOf<FileType>()) }
     var minSizeMb by remember { mutableStateOf("") }
     var scope by remember { mutableStateOf("everywhere") } // everywhere / downloads / current
-    var selection by remember { mutableStateOf(setOf<String>()) }
-    androidx.activity.compose.BackHandler(enabled = selection.isNotEmpty()) { selection = emptySet() }
-    var deleteConfirm by remember { mutableStateOf(false) }
-    var showSortPick by remember { mutableStateOf(false) }
+    val sel = rememberSelection()
+    androidx.activity.compose.BackHandler(enabled = sel.active) { sel.clear() }
 
     val roots: List<File> = remember(scope) {
         when (scope) {
@@ -84,21 +86,18 @@ fun SearchScreen(
         vm.search(roots)
     }
 
+    val filesVer by appVm.filesVersion.collectAsState()
+    LaunchedEffect(filesVer) {
+        if (filesVer > 0 && (results.isNotEmpty() || hits.isNotEmpty())) runSearch()
+    }
+
     Scaffold(
         topBar = {
-            if (selection.isNotEmpty()) {
+            if (sel.active) {
                 TopAppBar(
-                    title = { Text("${selection.size} selected") },
+                    title = { Text("${sel.selected.size} selected") },
                     navigationIcon = {
-                        IconButton(onClick = { selection = emptySet() }) { Icon(Icons.Rounded.Close, "Clear") }
-                    },
-                    actions = {
-                        IconButton(onClick = { deleteConfirm = true }) {
-                            Icon(Icons.Rounded.Delete, "Delete")
-                        }
-                        IconButton(onClick = {
-                            Intents.share(nav.context, results.filter { it.path in selection })
-                        }) { Icon(Icons.Rounded.Share, "Share") }
+                        IconButton(onClick = { sel.clear() }) { Icon(Icons.Rounded.Close, "Clear") }
                     },
                 )
             } else {
@@ -242,6 +241,7 @@ fun SearchScreen(
 
             if (searching) LinearProgressIndicator(Modifier.fillMaxWidth())
 
+            Box(Modifier.weight(1f).fillMaxWidth()) {
             when {
                 mode == "content" -> when {
                     hits.isEmpty() && !searching && query.isNotBlank() ->
@@ -255,8 +255,14 @@ fun SearchScreen(
                             "Type a phrase — matches come from inside your documents' text.")
                     else -> LazyColumn(Modifier.fillMaxSize()) {
                         items(hits, key = { it.path }) { h ->
+                            val isSel = h.path in sel.selected
                             ListItem(
-                                modifier = Modifier.clickable { nav.navigate(Routes.preview(h.path)) },
+                                modifier = Modifier.combinedClickable(
+                                    onClick = {
+                                        if (sel.active) sel.toggle(h.path)
+                                        else nav.navigate(Routes.preview(h.path))
+                                    },
+                                    onLongClick = { sel.toggle(h.path) }),
                                 headlineContent = {
                                     Text(File(h.path).name, fontWeight = FontWeight.SemiBold, maxLines = 1)
                                 },
@@ -271,7 +277,8 @@ fun SearchScreen(
                                     }
                                 },
                                 leadingContent = {
-                                    Icon(Icons.Rounded.Article, null,
+                                    Icon(if (isSel) Icons.Rounded.CheckCircle else Icons.Rounded.Article,
+                                        null,
                                         tint = MaterialTheme.colorScheme.primary)
                                 },
                                 trailingContent = {
@@ -285,9 +292,13 @@ fun SearchScreen(
                                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                 },
+                                colors = ListItemDefaults.colors(
+                                    containerColor = if (isSel)
+                                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                                    else androidx.compose.ui.graphics.Color.Transparent),
                             )
                         }
-                        item { Spacer(Modifier.height(96.dp)) }
+                        item { Spacer(Modifier.height(if (sel.active) 150.dp else 96.dp)) }
                     }
                 }
                 results.isEmpty() && !searching && (query.isNotBlank() || selectedTypes.isNotEmpty()) ->
@@ -299,30 +310,24 @@ fun SearchScreen(
                     items(results, key = { it.path }) { e ->
                         FileRow(
                             e = e,
-                            selected = e.path in selection,
+                            selected = e.path in sel.selected,
                             onClick = {
-                                if (selection.isNotEmpty()) {
-                                    selection = if (e.path in selection) selection - e.path else selection + e.path
-                                } else if (e.isDirectory) nav.navigate(Routes.folder(e.path))
+                                if (sel.active) sel.toggle(e.path)
+                                else if (e.isDirectory) nav.navigate(Routes.folder(e.path))
                                 else nav.navigate(Routes.preview(e.path))
                             },
-                            onLongClick = {
-                                selection = if (e.path in selection) selection - e.path else selection + e.path
-                            },
+                            onLongClick = { sel.toggle(e.path) },
                         )
                     }
-                    item { Spacer(Modifier.height(96.dp)) }
+                    item { Spacer(Modifier.height(if (sel.active) 150.dp else 96.dp)) }
                 }
             }
+            MassActionsBar(
+                appVm, sel,
+                allPaths = results.map { it.path } + hits.map { it.path },
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
+            }
         }
-    }
-
-    if (deleteConfirm) {
-        com.filezen.files.ui.common.ConfirmDialog(
-            "Move to trash?", "${selection.size} item(s) will be moved to trash.",
-            "Move to trash",
-            onConfirm = { appVm.opTrash(selection.toList()); selection = emptySet(); deleteConfirm = false },
-            onDismiss = { deleteConfirm = false },
-        )
     }
 }

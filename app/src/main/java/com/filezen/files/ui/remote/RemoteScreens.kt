@@ -1,6 +1,8 @@
 package com.filezen.files.ui.remote
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -143,6 +145,20 @@ class RemoteBrowserViewModel : ViewModel() {
         local.inputStream().use { ins ->
             fs?.write(RemoteFs.joinPath(_path.value, local.name), ins, local.length())
         }
+        load(_path.value)
+    }
+
+    fun downloadMany(list: List<RemoteEntry>, destDir: File) = op("Downloading ${list.size} files") {
+        destDir.mkdirs()
+        list.filter { !it.isDir }.forEach { e ->
+            val out = File(destDir, e.name)
+            fs?.openInput(e.path)?.use { ins ->
+                out.outputStream().use { ins.copyTo(it, 128 * 1024) }
+            }
+        }
+    }
+    fun deleteMany(list: List<RemoteEntry>) = op("Deleting ${list.size} items") {
+        list.forEach { e -> runCatching { fs?.delete(e.path, e.isDir) } }
         load(_path.value)
     }
 
@@ -342,7 +358,7 @@ private fun ConnectionDialog(initial: RemoteConnection?,
 
 // ---------- Remote browser ----------
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun RemoteScreen(nav: NavController, connId: Long, vm: RemoteBrowserViewModel = viewModel()) {
     val conns by FileZenApp.c.settings.remoteConnections
@@ -359,6 +375,9 @@ fun RemoteScreen(nav: NavController, connId: Long, vm: RemoteBrowserViewModel = 
     var mkdir by remember { mutableStateOf(false) }
     var downloadTarget by remember { mutableStateOf<RemoteEntry?>(null) }
     var pickUpload by remember { mutableStateOf(false) }
+    val sel = rememberSelection()
+    var dlPicker by remember { mutableStateOf(false) }
+    var delSel by remember { mutableStateOf(false) }
     val favorites by FileZenApp.c.db.favorites().all().collectAsState(initial = emptyList())
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
@@ -465,8 +484,10 @@ fun RemoteScreen(nav: NavController, connId: Long, vm: RemoteBrowserViewModel = 
                 entries.isEmpty() && conn != null && error == null ->
                     EmptyState(Icons.Rounded.CloudOff, "Empty",
                         "No files here — or the connection failed above.")
-                else -> LazyColumn(Modifier.fillMaxSize()) {
+                else -> Box(Modifier.weight(1f).fillMaxWidth()) {
+                LazyColumn(Modifier.fillMaxSize()) {
                     items(entries, key = { it.path }) { e ->
+                        val isSel = e.path in sel.selected
                         ListItem(
                             headlineContent = { Text(e.name, maxLines = 1,
                                 overflow = TextOverflow.Ellipsis) },
@@ -477,13 +498,17 @@ fun RemoteScreen(nav: NavController, connId: Long, vm: RemoteBrowserViewModel = 
                                     style = MaterialTheme.typography.bodySmall)
                             },
                             leadingContent = {
-                                Icon(if (e.isDir) Icons.Rounded.Folder else Icons.Rounded.InsertDriveFile,
+                                Icon(
+                                    if (isSel) Icons.Rounded.CheckCircle
+                                    else if (e.isDir) Icons.Rounded.Folder
+                                    else Icons.Rounded.InsertDriveFile,
                                     null,
-                                    tint = if (e.isDir) Color(0xFFF5B94E)
+                                    tint = if (isSel) MaterialTheme.colorScheme.primary
+                                        else if (e.isDir) Color(0xFFF5B94E)
                                         else MaterialTheme.colorScheme.onSurfaceVariant)
                             },
                             trailingContent = {
-                                Row {
+                                if (!sel.active) Row {
                                     if (!e.isDir) IconButton(onClick = { downloadTarget = e }) {
                                         Icon(Icons.Rounded.Download, "Download",
                                             modifier = Modifier.size(20.dp),
@@ -501,14 +526,81 @@ fun RemoteScreen(nav: NavController, connId: Long, vm: RemoteBrowserViewModel = 
                                     }
                                 }
                             },
-                            modifier = Modifier.clickable {
-                                if (e.isDir) vm.navigate(e.path)
-                                else downloadTarget = e
-                            },
-                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                            modifier = Modifier.combinedClickable(
+                                onClick = {
+                                    if (sel.active) sel.toggle(e.path)
+                                    else if (e.isDir) vm.navigate(e.path)
+                                    else downloadTarget = e
+                                },
+                                onLongClick = { sel.toggle(e.path) }),
+                            colors = ListItemDefaults.colors(
+                                containerColor = if (isSel)
+                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                                else Color.Transparent),
                         )
                     }
-                    item { Spacer(Modifier.height(96.dp)) }
+                    item { Spacer(Modifier.height(if (sel.active) 150.dp else 96.dp)) }
+                }
+                if (sel.active) {
+                    val selEntries = entries.filter { it.path in sel.selected }
+                    val fileCount = selEntries.count { !it.isDir }
+                    Surface(
+                        Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        tonalElevation = 4.dp, shadowElevation = 8.dp,
+                        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+                    ) {
+                        Column {
+                            Row(
+                                Modifier.fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("${sel.selected.size} selected",
+                                    fontWeight = FontWeight.SemiBold,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    modifier = Modifier.weight(1f))
+                                TextButton(onClick = {
+                                    if (sel.selected.size == entries.size) sel.clear()
+                                    else sel.setAll(entries.map { it.path })
+                                }) {
+                                    Text(if (sel.selected.size == entries.size) "None" else "All")
+                                }
+                                IconButton(onClick = { sel.clear() }) {
+                                    Icon(Icons.Rounded.Close, "Close",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                            Row(
+                                Modifier.fillMaxWidth()
+                                    .padding(horizontal = 16.dp)
+                                    .padding(bottom = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                Button(
+                                    onClick = { dlPicker = true },
+                                    enabled = fileCount > 0,
+                                    modifier = Modifier.weight(1f),
+                                ) {
+                                    Icon(Icons.Rounded.Download, null, Modifier.size(18.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Download $fileCount")
+                                }
+                                OutlinedButton(
+                                    onClick = { delSel = true },
+                                    modifier = Modifier.weight(1f),
+                                ) {
+                                    Icon(Icons.Rounded.Delete, null,
+                                        Modifier.size(18.dp),
+                                        tint = MaterialTheme.colorScheme.error)
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Delete ${sel.selected.size}",
+                                        color = MaterialTheme.colorScheme.error)
+                                }
+                            }
+                        }
+                    }
+                }
                 }
             }
         }
@@ -538,6 +630,29 @@ fun RemoteScreen(nav: NavController, connId: Long, vm: RemoteBrowserViewModel = 
             shareDir = FileZenApp.c.transfer.shareDir,
             onPick = { dest -> vm.download(e, File(dest)); downloadTarget = null },
             onDismiss = { downloadTarget = null })
+    }
+    if (dlPicker) {
+        DestinationSheet(favorites = favorites,
+            currentPath = android.os.Environment
+                .getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
+                .absolutePath,
+            shareDir = FileZenApp.c.transfer.shareDir,
+            onPick = { dest ->
+                vm.downloadMany(entries.filter { it.path in sel.selected && !it.isDir },
+                    File(dest))
+                dlPicker = false; sel.clear()
+            },
+            onDismiss = { dlPicker = false })
+    }
+    if (delSel) {
+        ConfirmDialog("Delete ${sel.selected.size} remote item(s)?",
+            "They will be deleted on the server. This can't be undone.",
+            "Delete", danger = true,
+            onConfirm = {
+                vm.deleteMany(entries.filter { it.path in sel.selected })
+                delSel = false; sel.clear()
+            },
+            onDismiss = { delSel = false })
     }
     if (pickUpload) {
         LaunchedEffect(Unit) {

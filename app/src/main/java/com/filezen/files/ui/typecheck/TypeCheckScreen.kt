@@ -1,5 +1,7 @@
 package com.filezen.files.ui.typecheck
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -15,8 +17,11 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.filezen.files.core.model.formatSize
 import com.filezen.files.core.sig.SigDetect
+import com.filezen.files.ui.AppViewModel
 import com.filezen.files.ui.common.FilePickerSheet
 import com.filezen.files.ui.common.FolderPickerSheet
+import com.filezen.files.ui.common.MassActionsBar
+import com.filezen.files.ui.common.rememberSelection
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -26,16 +31,20 @@ import java.io.File
  * True file-type check (Siegfried-style): identify files by magic bytes and
  * flag extensions that lie about the real content.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-fun TypeCheckScreen(nav: NavController) {
+fun TypeCheckScreen(nav: NavController, appVm: AppViewModel) {
     val scope = rememberCoroutineScope()
     var picking by remember { mutableStateOf(0) } // 0 none, 1 file, 2 folder
     var scanning by remember { mutableStateOf(false) }
     var results by remember { mutableStateOf<List<SigDetect.Result>>(emptyList()) }
     var scannedLabel by remember { mutableStateOf<String?>(null) }
+    var lastTarget by remember { mutableStateOf<File?>(null) }
+    val sel = rememberSelection()
+    val filesVer by appVm.filesVersion.collectAsState()
 
     fun scan(target: File) {
+        lastTarget = target
         scope.launch(Dispatchers.IO) {
             scanning = true
             try {
@@ -54,6 +63,8 @@ fun TypeCheckScreen(nav: NavController) {
         }
     }
 
+    LaunchedEffect(filesVer) { if (filesVer > 0) lastTarget?.let { scan(it) } }
+
     val mismatches = remember(results) { results.count { !it.matches } }
 
     Scaffold(topBar = {
@@ -64,7 +75,8 @@ fun TypeCheckScreen(nav: NavController) {
                 }
             })
     }) { pad ->
-        LazyColumn(Modifier.padding(pad).fillMaxSize()) {
+        Box(Modifier.padding(pad).fillMaxSize()) {
+        LazyColumn(Modifier.fillMaxSize()) {
             item {
                 Card(Modifier.fillMaxWidth().padding(16.dp),
                     shape = RoundedCornerShape(20.dp),
@@ -137,6 +149,7 @@ fun TypeCheckScreen(nav: NavController) {
                     }
                 }
                 items(results, key = { it.path }) { r ->
+                    val isSel = r.path in sel.selected
                     ListItem(
                         headlineContent = {
                             Text(File(r.path).name, maxLines = 1,
@@ -152,10 +165,11 @@ fun TypeCheckScreen(nav: NavController) {
                         },
                         leadingContent = {
                             Icon(
-                                if (r.matches) Icons.Rounded.CheckCircle
+                                if (isSel) Icons.Rounded.CheckCircle
+                                else if (r.matches) Icons.Rounded.CheckCircleOutline
                                 else Icons.Rounded.Warning,
                                 null,
-                                tint = if (r.matches) MaterialTheme.colorScheme.primary
+                                tint = if (isSel || r.matches) MaterialTheme.colorScheme.primary
                                     else MaterialTheme.colorScheme.error)
                         },
                         trailingContent = {
@@ -168,10 +182,23 @@ fun TypeCheckScreen(nav: NavController) {
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         },
+                        modifier = Modifier.combinedClickable(
+                            onClick = { sel.toggle(r.path) },
+                            onLongClick = { sel.toggle(r.path) }),
+                        colors = ListItemDefaults.colors(
+                            containerColor = if (isSel)
+                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                            else androidx.compose.ui.graphics.Color.Transparent),
                     )
                 }
             }
-            item { Spacer(Modifier.height(32.dp)) }
+            item { Spacer(Modifier.height(if (sel.active) 140.dp else 32.dp)) }
+        }
+        MassActionsBar(
+            appVm, sel,
+            allPaths = results.map { it.path },
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
         }
     }
 

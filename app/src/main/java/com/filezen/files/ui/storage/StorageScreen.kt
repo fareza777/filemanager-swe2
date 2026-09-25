@@ -2,8 +2,10 @@ package com.filezen.files.ui.storage
 
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -34,7 +36,7 @@ import com.filezen.files.ui.common.*
 import com.filezen.files.ui.common.iconFor
 import com.filezen.files.ui.common.tintFor
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun StorageScreen(nav: NavController, appVm: AppViewModel, vm: StorageViewModel = viewModel()) {
     val usage by vm.usage.collectAsState()
@@ -46,8 +48,11 @@ fun StorageScreen(nav: NavController, appVm: AppViewModel, vm: StorageViewModel 
     val trashSize by vm.trashSize.collectAsState()
     val autoSort by vm.autoSort.collectAsState()
     val adFree by appVm.adFree.collectAsState()
+    val sel = rememberSelection()
+    val filesVer by appVm.filesVersion.collectAsState()
 
     LaunchedEffect(Unit) { vm.analyze() }
+    LaunchedEffect(filesVer) { if (filesVer > 0) vm.analyze() }
 
     Scaffold(
         topBar = {
@@ -59,7 +64,8 @@ fun StorageScreen(nav: NavController, appVm: AppViewModel, vm: StorageViewModel 
             )
         },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())) {
+        Box(Modifier.fillMaxSize().padding(padding)) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
 
             usage?.let { u ->
                 Card(Modifier.fillMaxWidth().padding(16.dp),
@@ -159,6 +165,12 @@ fun StorageScreen(nav: NavController, appVm: AppViewModel, vm: StorageViewModel 
                 val thresholds = listOf(20L, 50L, 100L)
                 val filtered = large.filter { it.entry.size >= threshold * 1024 * 1024 }
                 val shown = if (showAll) filtered else filtered.take(10)
+                LaunchedEffect(filtered.size, dups.size) {
+                    sel.setAll(sel.selected.filter { p ->
+                        filtered.any { it.entry.path == p } ||
+                            dups.any { g -> g.files.any { f -> f.path == p } }
+                    }.toSet())
+                }
                 SectionHeader("Large files")
                 Row(Modifier.fillMaxWidth()
                     .padding(horizontal = 16.dp)
@@ -186,14 +198,28 @@ fun StorageScreen(nav: NavController, appVm: AppViewModel, vm: StorageViewModel 
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         shown.forEach { lf ->
+                            val p = lf.entry.path
+                            val isSel = p in sel.selected
                             ListItem(
                                 headlineContent = { Text(lf.entry.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                                 supportingContent = { Text(lf.entry.path, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                     style = MaterialTheme.typography.labelSmall) },
                                 leadingContent = { ThumbBox(lf.entry, 40.dp) },
-                                trailingContent = { Text(formatSize(lf.entry.size), fontWeight = FontWeight.Medium) },
-                                modifier = Modifier.clickable { nav.navigate(Routes.preview(lf.entry.path)) },
-                                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                                trailingContent = {
+                                    if (isSel) Icon(Icons.Rounded.CheckCircle, null,
+                                        tint = MaterialTheme.colorScheme.primary)
+                                    else Text(formatSize(lf.entry.size), fontWeight = FontWeight.Medium)
+                                },
+                                modifier = Modifier.combinedClickable(
+                                    onClick = {
+                                        if (sel.active) sel.toggle(p)
+                                        else nav.navigate(Routes.preview(p))
+                                    },
+                                    onLongClick = { sel.toggle(p) }),
+                                colors = ListItemDefaults.colors(
+                                    containerColor = if (isSel)
+                                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                                    else Color.Transparent),
                             )
                         }
                         if (filtered.size > shown.size) {
@@ -218,6 +244,8 @@ fun StorageScreen(nav: NavController, appVm: AppViewModel, vm: StorageViewModel 
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                     Column {
                         dups.take(6).forEach { g ->
+                            val gPaths = g.files.map { it.path }
+                            val isSel = gPaths.all { it in sel.selected }
                             ListItem(
                                 headlineContent = {
                                     Text("${g.files.size}× ${g.files.first().name}",
@@ -225,7 +253,22 @@ fun StorageScreen(nav: NavController, appVm: AppViewModel, vm: StorageViewModel 
                                 },
                                 supportingContent = { Text("identical · ${formatSize(g.files.first().size)} each") },
                                 leadingContent = { ThumbBox(g.files.first(), 40.dp) },
-                                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                                trailingContent = {
+                                    if (isSel) Icon(Icons.Rounded.CheckCircle, null,
+                                        tint = MaterialTheme.colorScheme.primary)
+                                },
+                                modifier = Modifier.combinedClickable(
+                                    onClick = {
+                                        if (isSel) gPaths.forEach { sel.toggle(it) }
+                                        else gPaths.forEach { if (it !in sel.selected) sel.toggle(it) }
+                                    },
+                                    onLongClick = {
+                                        gPaths.forEach { if (it !in sel.selected) sel.toggle(it) }
+                                    }),
+                                colors = ListItemDefaults.colors(
+                                    containerColor = if (isSel)
+                                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                                    else Color.Transparent),
                             )
                         }
                     }
@@ -294,7 +337,14 @@ fun StorageScreen(nav: NavController, appVm: AppViewModel, vm: StorageViewModel 
 
             Spacer(Modifier.height(16.dp))
             if (!adFree) ZenBanner(Modifier.padding(horizontal = 16.dp))
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(if (sel.active) 140.dp else 32.dp))
+        }
+        MassActionsBar(
+            appVm, sel,
+            allPaths = large.map { it.entry.path } +
+                dups.flatMap { g -> g.files.map { it.path } },
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
         }
     }
 }

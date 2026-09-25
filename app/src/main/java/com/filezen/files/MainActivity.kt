@@ -300,18 +300,18 @@ fun FileZenApp_(appVm: AppViewModel) {
                 arguments = listOf(navArgument("id") { type = NavType.LongType }),
             ) { back -> RemoteScreen(nav, back.arguments?.getLong("id") ?: 0L) }
             composable(Routes.DUALPANE) { DualPaneScreen(nav, appVm) }
-            composable(Routes.COMPARE) { CompareScreen(nav) }
+            composable(Routes.COMPARE) { CompareScreen(nav, appVm) }
             composable(Routes.METACLEAN) { PrivacyScreen(nav, appVm) }
             composable(Routes.PHOTOCLEAN) { PhotoCleanerScreen(nav, appVm) }
             composable(Routes.SYNCPAIRS) { SyncScreen(nav, appVm) }
             composable(Routes.POWER) { PowerAccessScreen(nav) }
             composable(Routes.DELTA) { DeltaScreen(nav) }
             composable(Routes.FINGERPRINT) { FingerprintScreen(nav) }
-            composable(Routes.TYPECHECK) { TypeCheckScreen(nav) }
+            composable(Routes.TYPECHECK) { TypeCheckScreen(nav, appVm) }
             composable(Routes.DRIVECHECK) { DriveCheckScreen(nav) }
             composable(Routes.SHIELD) { ShieldScreen(nav) }
             composable(Routes.TIMEMACHINE) { TimeMachineScreen(nav) }
-            composable(Routes.SIMILAR) { SimilarScreen(nav) }
+            composable(Routes.SIMILAR) { SimilarScreen(nav, appVm) }
             composable(Routes.ZSTD) { ZstdScreen(nav) }
             composable(Routes.APPBACKUP) { AppBackupScreen(nav) }
             composable(

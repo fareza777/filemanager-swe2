@@ -30,6 +30,10 @@ class OperationRunner(
     private val _current = MutableStateFlow<RunningOp?>(null)
     val current: StateFlow<RunningOp?> = _current
 
+    /** Bumped after every finished op — screens showing file lists refresh on it. */
+    private val _filesVersion = MutableStateFlow(0)
+    val filesVersion: StateFlow<Int> = _filesVersion
+
     private val _lastSummary = MutableStateFlow<OpSummary?>(null)
     val lastSummary: StateFlow<OpSummary?> = _lastSummary
 
@@ -134,6 +138,7 @@ class OperationRunner(
             } finally {
                 _current.value = null
                 job = null
+                _filesVersion.value += 1
             }
         }
     }

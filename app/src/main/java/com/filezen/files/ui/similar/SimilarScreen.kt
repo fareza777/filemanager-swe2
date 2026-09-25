@@ -1,5 +1,7 @@
 package com.filezen.files.ui.similar
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -16,7 +18,10 @@ import androidx.navigation.NavController
 import com.filezen.files.core.imohash.ImoHash
 import com.filezen.files.core.model.formatSize
 import com.filezen.files.core.tlsh.Tlsh
+import com.filezen.files.ui.AppViewModel
 import com.filezen.files.ui.common.FolderPickerSheet
+import com.filezen.files.ui.common.MassActionsBar
+import com.filezen.files.ui.common.rememberSelection
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -29,9 +34,9 @@ import java.security.MessageDigest
  *  - "Exact duplicates" pre-scanned with imohash (begin/mid/end sampling) then
  *    confirmed with full SHA-256 — fast even on large files.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-fun SimilarScreen(nav: NavController) {
+fun SimilarScreen(nav: NavController, appVm: AppViewModel) {
     val scope = rememberCoroutineScope()
     var picking by remember { mutableStateOf(false) }
     var folder by remember { mutableStateOf<File?>(null) }
@@ -39,8 +44,11 @@ fun SimilarScreen(nav: NavController) {
     var simGroups by remember { mutableStateOf<List<List<Pair<File, Int>>>>(emptyList()) }
     var dupGroups by remember { mutableStateOf<List<List<File>>>(emptyList()) }
     var stats by remember { mutableStateOf("") }
+    val sel = rememberSelection()
+    val filesVer by appVm.filesVersion.collectAsState()
 
     fun scan(dir: File) {
+        folder = dir
         scope.launch(Dispatchers.IO) {
             busy = "Hashing files…"
             try {
@@ -97,11 +105,14 @@ fun SimilarScreen(nav: NavController) {
         }
     }
 
+    LaunchedEffect(filesVer) { if (filesVer > 0) folder?.let { scan(it) } }
+
     Scaffold(
         topBar = { TopAppBar(title = { Text("Similar files", fontWeight = FontWeight.SemiBold) }, navigationIcon = { IconButton(onClick = { nav.popBackStack() }) { Icon(Icons.Rounded.ArrowBack, null) } }) },
         bottomBar = {}
     ) { pad ->
-        Column(Modifier.padding(pad).fillMaxSize()) {
+        Box(Modifier.padding(pad).fillMaxSize()) {
+        Column(Modifier.fillMaxSize()) {
             Card(
                 modifier = Modifier.padding(16.dp).fillMaxWidth(),
                 shape = RoundedCornerShape(20.dp),
@@ -127,13 +138,26 @@ fun SimilarScreen(nav: NavController) {
             busy?.let { LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 16.dp)); Spacer(Modifier.height(4.dp)); Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp)) }
             LazyColumn(Modifier.fillMaxSize()) {
                 if (simGroups.isNotEmpty()) {
-                    item { Text("Near-duplicates (TLSH)", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(16.dp, 8.dp)) }
+                    item { Text("Near-duplicates (TLSH) — tap to select", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(16.dp, 8.dp)) }
                     items(simGroups) { g ->
                         Card(Modifier.padding(horizontal = 16.dp, vertical = 4.dp).fillMaxWidth()) {
                             Column(Modifier.padding(12.dp)) {
                                 g.forEach { (f, d) ->
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Rounded.InsertDriveFile, null, tint = MaterialTheme.colorScheme.primary)
+                                    val p = f.absolutePath
+                                    val isSel = p in sel.selected
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .combinedClickable(
+                                                onClick = { sel.toggle(p) },
+                                                onLongClick = { sel.toggle(p) })
+                                            .padding(vertical = 4.dp),
+                                    ) {
+                                        Icon(
+                                            if (isSel) Icons.Rounded.CheckCircle
+                                            else Icons.Rounded.InsertDriveFile, null,
+                                            tint = MaterialTheme.colorScheme.primary)
                                         Spacer(Modifier.width(8.dp))
                                         Column(Modifier.weight(1f)) {
                                             Text(f.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
@@ -146,13 +170,27 @@ fun SimilarScreen(nav: NavController) {
                     }
                 }
                 if (dupGroups.isNotEmpty()) {
-                    item { Text("Exact duplicates (imohash + SHA-256)", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(16.dp, 8.dp)) }
+                    item { Text("Exact duplicates (imohash + SHA-256) — tap to select", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(16.dp, 8.dp)) }
                     items(dupGroups) { g ->
                         Card(Modifier.padding(horizontal = 16.dp, vertical = 4.dp).fillMaxWidth()) {
                             Column(Modifier.padding(12.dp)) {
                                 g.forEach { f ->
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Rounded.ContentCopy, null, tint = MaterialTheme.colorScheme.secondary)
+                                    val p = f.absolutePath
+                                    val isSel = p in sel.selected
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .combinedClickable(
+                                                onClick = { sel.toggle(p) },
+                                                onLongClick = { sel.toggle(p) })
+                                            .padding(vertical = 4.dp),
+                                    ) {
+                                        Icon(
+                                            if (isSel) Icons.Rounded.CheckCircle
+                                            else Icons.Rounded.ContentCopy, null,
+                                            tint = if (isSel) MaterialTheme.colorScheme.primary
+                                                else MaterialTheme.colorScheme.secondary)
                                         Spacer(Modifier.width(8.dp))
                                         Column(Modifier.weight(1f)) {
                                             Text(f.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
@@ -168,6 +206,13 @@ fun SimilarScreen(nav: NavController) {
                     item { Text("No duplicates or near-duplicates found.", modifier = Modifier.padding(24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 }
             }
+        }
+        MassActionsBar(
+            appVm, sel,
+            allPaths = simGroups.flatten().map { it.first.absolutePath } +
+                dupGroups.flatten().map { it.absolutePath },
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
         }
     }
 

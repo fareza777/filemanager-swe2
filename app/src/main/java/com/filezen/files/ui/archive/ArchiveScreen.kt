@@ -1,8 +1,11 @@
 package com.filezen.files.ui.archive
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
@@ -21,6 +24,7 @@ import com.filezen.files.core.model.FileEntry
 import com.filezen.files.ui.common.EmptyState
 import com.filezen.files.ui.common.FileRow
 import com.filezen.files.ui.common.SkeletonRow
+import com.filezen.files.ui.common.rememberSelection
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -30,7 +34,7 @@ import java.io.File
  * Archive-as-folder (Twig-style): browse a ZIP/TAR/TGZ like a directory —
  * enter folders inside it, extract single files or the whole thing.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ArchiveScreen(nav: NavController, archivePath: String, innerPath: String) {
     val scope = rememberCoroutineScope()
@@ -38,6 +42,7 @@ fun ArchiveScreen(nav: NavController, archivePath: String, innerPath: String) {
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf<String?>(null) }
+    val sel = rememberSelection()
     val archive = remember(archivePath) { File(archivePath) }
 
     fun load(prefix: String) {
@@ -139,19 +144,21 @@ fun ArchiveScreen(nav: NavController, archivePath: String, innerPath: String) {
             when {
                 loading -> Column(Modifier.padding(horizontal = 10.dp)) { repeat(8) { SkeletonRow() } }
                 entries.isEmpty() -> EmptyState(Icons.Rounded.FolderZip, "Empty", "Nothing at this level.")
-                else -> LazyColumn(Modifier.fillMaxSize()) {
+                else -> Box(Modifier.weight(1f).fillMaxWidth()) {
+                LazyColumn(Modifier.fillMaxSize()) {
                     items(entries, key = { it.path }) { e ->
                         FileRow(
                             e = e,
-                            selected = false,
+                            selected = e.path in sel.selected,
                             onClick = {
-                                if (e.isDirectory) {
+                                if (sel.active) sel.toggle(e.path)
+                                else if (e.isDirectory) {
                                     nav.navigate(Routes.archive(archivePath, e.path))
                                 } else extractOne(e)
                             },
-                            onLongClick = {},
+                            onLongClick = { sel.toggle(e.path) },
                             trailing = {
-                                if (!e.isDirectory) {
+                                if (!e.isDirectory && !sel.active) {
                                     IconButton(onClick = { extractOne(e) }) {
                                         Icon(Icons.Rounded.Output, "Extract file",
                                             modifier = Modifier.size(20.dp),
@@ -161,7 +168,67 @@ fun ArchiveScreen(nav: NavController, archivePath: String, innerPath: String) {
                             },
                         )
                     }
-                    item { Spacer(Modifier.height(80.dp)) }
+                    item { Spacer(Modifier.height(if (sel.active) 130.dp else 80.dp)) }
+                }
+                if (sel.active) {
+                    val selFiles = entries.filter { it.path in sel.selected && !it.isDirectory }
+                    Surface(
+                        Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        tonalElevation = 4.dp, shadowElevation = 8.dp,
+                        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+                    ) {
+                        Column {
+                            Row(
+                                Modifier.fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("${sel.selected.size} selected",
+                                    fontWeight = FontWeight.SemiBold,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    modifier = Modifier.weight(1f))
+                                TextButton(onClick = {
+                                    if (sel.selected.size == entries.size) sel.clear()
+                                    else sel.setAll(entries.map { it.path })
+                                }) {
+                                    Text(if (sel.selected.size == entries.size) "None" else "All")
+                                }
+                                IconButton(onClick = { sel.clear() }) {
+                                    Icon(Icons.Rounded.Close, "Close",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                            Button(
+                                onClick = {
+                                    busy = "Extracting ${selFiles.size} files…"
+                                    scope.launch(Dispatchers.IO) {
+                                        try {
+                                            extractDir.mkdirs()
+                                            selFiles.forEach { f ->
+                                                val out = File(extractDir, f.name)
+                                                ArchiveFs.open(archive, f.path)?.use { ins ->
+                                                    out.outputStream().use {
+                                                        ins.copyTo(it, 128 * 1024)
+                                                    }
+                                                }
+                                            }
+                                            sel.clear()
+                                        } finally { busy = null }
+                                    }
+                                },
+                                enabled = busy == null && selFiles.isNotEmpty(),
+                                modifier = Modifier.fillMaxWidth()
+                                    .padding(horizontal = 16.dp)
+                                    .padding(bottom = 12.dp),
+                            ) {
+                                Icon(Icons.Rounded.Output, null, Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Extract ${selFiles.size} selected")
+                            }
+                        }
+                    }
+                }
                 }
             }
         }

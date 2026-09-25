@@ -24,6 +24,7 @@ class AppViewModel : ViewModel() {
     val adFree = c.billing.adFree
     val runningOp = c.ops.current
     val lastSummary = c.ops.lastSummary
+    val filesVersion = c.ops.filesVersion
 
     // ---- selection basket (files picked across folders, e.g. for tidy) ----
     private val _basket = MutableStateFlow<Set<String>>(emptySet())
@@ -716,6 +717,12 @@ class StorageViewModel : ViewModel() {
         c.db.trash().get(id)?.let { c.trash.purge(it) }
     }
     fun purgeAll() = viewModelScope.launch { c.trash.purgeAll() }
+    fun restoreTrashMany(ids: List<Long>) = viewModelScope.launch {
+        ids.forEach { id -> c.db.trash().get(id)?.let { c.trash.restore(it) } }
+    }
+    fun purgeTrashMany(ids: List<Long>) = viewModelScope.launch {
+        ids.forEach { id -> c.db.trash().get(id)?.let { c.trash.purge(it) } }
+    }
 
     fun addRule(matchType: String, pattern: String, target: String, sourcePath: String? = null) =
         viewModelScope.launch {

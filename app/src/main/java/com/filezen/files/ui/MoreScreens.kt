@@ -1,9 +1,12 @@
 package com.filezen.files.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
@@ -23,13 +26,15 @@ import com.filezen.files.data.db.SortRule
 import com.filezen.files.ui.common.*
 import java.io.File
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun TrashScreen(nav: NavController, appVm: AppViewModel, vm: StorageViewModel = viewModel()) {
     val entries by vm.trashEntries.collectAsState()
     val size by vm.trashSize.collectAsState()
     var purgeAll by remember { mutableStateOf(false) }
     var purgeOne by remember { mutableStateOf<Long?>(null) }
+    var selIds by remember { mutableStateOf(setOf<Long>()) }
+    var purgeSel by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -52,33 +57,107 @@ fun TrashScreen(nav: NavController, appVm: AppViewModel, vm: StorageViewModel = 
             EmptyState(Icons.Rounded.DeleteOutline, "Trash is empty",
                 "Files you delete in FileZen are kept here for recovery.")
         } else {
-            LazyColumn(Modifier.fillMaxSize().padding(padding)) {
+            Box(Modifier.fillMaxSize().padding(padding)) {
+            LazyColumn(Modifier.fillMaxSize()) {
                 item {
                     Text(
-                        "${entries.size} items · ${formatSize(size)}",
+                        "${entries.size} items · ${formatSize(size)} — tap to select",
                         modifier = Modifier.padding(16.dp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 items(entries, key = { it.id }) { e ->
+                    val isSel = e.id in selIds
                     ListItem(
                         headlineContent = { Text(e.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         supportingContent = {
                             Text("${formatSize(e.size)} · deleted ${formatDate(e.deletedAt)}\nfrom ${e.originalPath}",
                                 style = MaterialTheme.typography.bodySmall, maxLines = 2)
                         },
-                        leadingContent = { Icon(Icons.Rounded.InsertDriveFile, null) },
+                        leadingContent = {
+                            Icon(
+                                if (isSel) Icons.Rounded.CheckCircle
+                                else Icons.Rounded.InsertDriveFile, null,
+                                tint = if (isSel) MaterialTheme.colorScheme.primary
+                                    else LocalContentColor.current)
+                        },
                         trailingContent = {
-                            Row {
+                            if (selIds.isEmpty()) Row {
                                 TextButton(onClick = { vm.restoreTrash(e.id) }) { Text("Restore") }
                                 TextButton(onClick = { purgeOne = e.id }) {
                                     Text("Delete", color = MaterialTheme.colorScheme.error)
                                 }
                             }
                         },
-                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        modifier = Modifier.combinedClickable(
+                            onClick = {
+                                selIds = if (isSel) selIds - e.id else selIds + e.id
+                            },
+                            onLongClick = {
+                                selIds = if (isSel) selIds - e.id else selIds + e.id
+                            }),
+                        colors = ListItemDefaults.colors(
+                            containerColor = if (isSel)
+                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                            else Color.Transparent),
                     )
                 }
+                item { Spacer(Modifier.height(if (selIds.isNotEmpty()) 140.dp else 16.dp)) }
+            }
+            if (selIds.isNotEmpty()) {
+                Surface(
+                    Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    tonalElevation = 4.dp, shadowElevation = 8.dp,
+                    shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+                ) {
+                    Column {
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text("${selIds.size} selected",
+                                fontWeight = FontWeight.SemiBold,
+                                style = MaterialTheme.typography.titleSmall,
+                                modifier = Modifier.weight(1f))
+                            TextButton(onClick = {
+                                selIds = if (selIds.size == entries.size) emptySet()
+                                    else entries.map { it.id }.toSet()
+                            }) { Text(if (selIds.size == entries.size) "None" else "All") }
+                            IconButton(onClick = { selIds = emptySet() }) {
+                                Icon(Icons.Rounded.Close, "Close",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                                .padding(bottom = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Button(
+                                onClick = {
+                                    vm.restoreTrashMany(selIds.toList()); selIds = emptySet()
+                                },
+                                modifier = Modifier.weight(1f),
+                            ) {
+                                Icon(Icons.Rounded.Restore, null, Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp)); Text("Restore")
+                            }
+                            OutlinedButton(
+                                onClick = { purgeSel = true },
+                                modifier = Modifier.weight(1f),
+                            ) {
+                                Icon(Icons.Rounded.DeleteForever, null,
+                                    Modifier.size(18.dp),
+                                    tint = MaterialTheme.colorScheme.error)
+                                Spacer(Modifier.width(6.dp))
+                                Text("Delete forever",
+                                    color = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    }
+                }
+            }
             }
         }
     }
@@ -94,6 +173,15 @@ fun TrashScreen(nav: NavController, appVm: AppViewModel, vm: StorageViewModel = 
             "Delete", danger = true,
             onConfirm = { vm.purgeTrash(id); purgeOne = null },
             onDismiss = { purgeOne = null })
+    }
+    if (purgeSel) {
+        ConfirmDialog("Delete ${selIds.size} permanently?",
+            "Selected items will be permanently deleted. This can't be undone.",
+            "Delete", danger = true,
+            onConfirm = {
+                vm.purgeTrashMany(selIds.toList()); selIds = emptySet(); purgeSel = false
+            },
+            onDismiss = { purgeSel = false })
     }
 }
 

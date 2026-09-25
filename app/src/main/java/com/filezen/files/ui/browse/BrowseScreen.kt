@@ -101,6 +101,9 @@ fun BrowseScreen(
     LaunchedEffect(fixedPath) { fixedPath?.let { vm.navigate(it) } }
     val isRootPicker = fixedPath == null
 
+    val filesVer by appVm.filesVersion.collectAsState()
+    LaunchedEffect(filesVer) { if (filesVer > 0 && path.isNotBlank()) vm.navigate(path) }
+
     androidx.activity.compose.BackHandler(enabled = selection.isNotEmpty()) { vm.clearSelection() }
 
     // Per-folder scroll memory: restore once when the path changes,

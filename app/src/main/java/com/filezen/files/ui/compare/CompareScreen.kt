@@ -1,6 +1,8 @@
 package com.filezen.files.ui.compare
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -18,8 +20,11 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.filezen.files.FileZenApp
 import com.filezen.files.core.compare.DirCompare
+import com.filezen.files.ui.AppViewModel
 import com.filezen.files.ui.common.FolderPickerSheet
+import com.filezen.files.ui.common.MassActionsBar
 import com.filezen.files.ui.common.SectionHeader
+import com.filezen.files.ui.common.rememberSelection
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -29,9 +34,9 @@ import java.io.File
  * Twig-style directory compare: pick two folders, get a three-way report —
  * only-in-A, only-in-B, and files that differ (size/mtime).
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-fun CompareScreen(nav: NavController) {
+fun CompareScreen(nav: NavController, appVm: AppViewModel) {
     var dirA by remember { mutableStateOf<File?>(null) }
     var dirB by remember { mutableStateOf<File?>(null) }
     var pickA by remember { mutableStateOf(false) }
@@ -40,6 +45,8 @@ fun CompareScreen(nav: NavController) {
     var result by remember { mutableStateOf<DirCompare.Result?>(null) }
     val scope = rememberCoroutineScope()
     val favorites by FileZenApp.c.db.favorites().all().collectAsState(initial = emptyList())
+    val sel = rememberSelection()
+    val filesVer by appVm.filesVersion.collectAsState()
 
     fun run() {
         val a = dirA ?: return; val b = dirB ?: return
@@ -49,6 +56,8 @@ fun CompareScreen(nav: NavController) {
             withContext(Dispatchers.Main) { result = r; running = false }
         }
     }
+
+    LaunchedEffect(filesVer) { if (filesVer > 0 && result != null) run() }
 
     Scaffold(
         topBar = {
@@ -60,7 +69,8 @@ fun CompareScreen(nav: NavController) {
             )
         },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
+        Box(Modifier.fillMaxSize().padding(padding)) {
+        Column(Modifier.fillMaxSize()) {
             // Pickers
             Row(Modifier.padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -126,32 +136,45 @@ fun CompareScreen(nav: NavController) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
 
-                LazyColumn(Modifier.fillMaxSize()) {
+                LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
                     @Composable
                     fun itemRow(icon: androidx.compose.ui.graphics.vector.ImageVector,
-                                tint: Color, p: String) {
+                                tint: Color, p: String, base: File) {
+                        val abs = File(base, p).absolutePath
+                        val isSel = abs in sel.selected
                         ListItem(
                             headlineContent = { Text(p,
                                 style = MaterialTheme.typography.bodySmall,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                            leadingContent = { Icon(icon, null, Modifier.size(18.dp), tint = tint) },
-                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                            leadingContent = {
+                                Icon(
+                                    if (isSel) Icons.Rounded.CheckCircle else icon,
+                                    null, Modifier.size(18.dp),
+                                    tint = if (isSel) MaterialTheme.colorScheme.primary else tint)
+                            },
+                            modifier = Modifier.combinedClickable(
+                                onClick = { sel.toggle(abs) },
+                                onLongClick = { sel.toggle(abs) }),
+                            colors = ListItemDefaults.colors(
+                                containerColor = if (isSel)
+                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                                else Color.Transparent),
                         )
                     }
                     if (r.onlyA.isNotEmpty()) {
-                        item { SectionHeader("Only in ${dirA?.name}") }
+                        item { SectionHeader("Only in ${dirA?.name} — tap to select") }
                         items(r.onlyA) { itemRow(Icons.Rounded.RemoveCircleOutline,
-                            MaterialTheme.colorScheme.error, it) }
+                            MaterialTheme.colorScheme.error, it, dirA!!) }
                     }
                     if (r.different.isNotEmpty()) {
-                        item { SectionHeader("Different content") }
+                        item { SectionHeader("Different content — tap to select (A-side)") }
                         items(r.different) { itemRow(Icons.Rounded.Difference,
-                            MaterialTheme.colorScheme.tertiary, it) }
+                            MaterialTheme.colorScheme.tertiary, it, dirA!!) }
                     }
                     if (r.onlyB.isNotEmpty()) {
-                        item { SectionHeader("Only in ${dirB?.name}") }
+                        item { SectionHeader("Only in ${dirB?.name} — tap to select") }
                         items(r.onlyB) { itemRow(Icons.Rounded.AddCircleOutline,
-                            MaterialTheme.colorScheme.primary, it) }
+                            MaterialTheme.colorScheme.primary, it, dirB!!) }
                     }
                     if (r.onlyA.isEmpty() && r.onlyB.isEmpty() && r.different.isEmpty()) {
                         item {
@@ -162,6 +185,16 @@ fun CompareScreen(nav: NavController) {
                     }
                 }
             }
+        }
+        MassActionsBar(
+            appVm, sel,
+            allPaths = (result?.let {
+                it.onlyA.map { p -> File(dirA!!, p).absolutePath } +
+                it.different.map { p -> File(dirA!!, p).absolutePath } +
+                it.onlyB.map { p -> File(dirB!!, p).absolutePath }
+            } ?: emptyList()),
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
         }
     }
 
