@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -151,13 +152,40 @@ fun StorageScreen(nav: NavController, appVm: AppViewModel, vm: StorageViewModel 
                 }
             }
 
-            // Large files
+            // Large files — threshold chips + expandable full list.
             if (large.isNotEmpty()) {
-                SectionHeader("Largest files")
-                Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                var threshold by remember { mutableStateOf(20L) }
+                var showAll by remember { mutableStateOf(false) }
+                val thresholds = listOf(20L, 50L, 100L)
+                val filtered = large.filter { it.entry.size >= threshold * 1024 * 1024 }
+                val shown = if (showAll) filtered else filtered.take(10)
+                SectionHeader("Large files")
+                Row(Modifier.fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    thresholds.forEach { t ->
+                        FilterChip(
+                            selected = threshold == t,
+                            onClick = { threshold = t },
+                            label = { Text("> ${t} MB") },
+                        )
+                    }
+                }
+                Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                     Column {
-                        large.take(10).forEach { lf ->
+                        Text("${filtered.size} files · ${formatSize(filtered.sumOf { it.entry.size })}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
+                        if (filtered.isEmpty()) {
+                            Text("No files above $threshold MB",
+                                modifier = Modifier.padding(16.dp),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        shown.forEach { lf ->
                             ListItem(
                                 headlineContent = { Text(lf.entry.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                                 supportingContent = { Text(lf.entry.path, maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -167,6 +195,17 @@ fun StorageScreen(nav: NavController, appVm: AppViewModel, vm: StorageViewModel 
                                 modifier = Modifier.clickable { nav.navigate(Routes.preview(lf.entry.path)) },
                                 colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                             )
+                        }
+                        if (filtered.size > shown.size) {
+                            TextButton(onClick = { showAll = true },
+                                modifier = Modifier.fillMaxWidth()) {
+                                Text("Show all ${filtered.size} files")
+                            }
+                        } else if (showAll && filtered.size > 10) {
+                            TextButton(onClick = { showAll = false },
+                                modifier = Modifier.fillMaxWidth()) {
+                                Text("Show less")
+                            }
                         }
                     }
                 }

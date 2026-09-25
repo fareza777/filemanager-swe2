@@ -102,12 +102,20 @@ fun TrashScreen(nav: NavController, appVm: AppViewModel, vm: StorageViewModel = 
 fun SortRulesScreen(nav: NavController, appVm: AppViewModel, vm: StorageViewModel = viewModel()) {
     val rules by vm.rules.collectAsState()
     var showAdd by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<com.filezen.files.data.db.SortRule?>(null) }
     var matchType by remember { mutableStateOf("EXTENSION") }
     var pattern by remember { mutableStateOf("") }
     var target by remember { mutableStateOf("") }
     var source by remember { mutableStateOf<String?>(null) }
     var pickFolder by remember { mutableStateOf(false) }
     var pickSource by remember { mutableStateOf(false) }
+
+    // Open the rule dialog prefilled — for templates (new rule) or editing.
+    fun openEditor(mt: String, p: String, t: String, s: String?,
+                   r: com.filezen.files.data.db.SortRule? = null) {
+        matchType = mt; pattern = p; target = t; source = s
+        editing = r; showAdd = true
+    }
 
     val storage = android.os.Environment.getExternalStorageDirectory().absolutePath
     val waMedia = "$storage/Android/media/com.whatsapp/WhatsApp/Media"
@@ -153,7 +161,7 @@ fun SortRulesScreen(nav: NavController, appVm: AppViewModel, vm: StorageViewMode
         run {
             LazyColumn(Modifier.fillMaxSize().padding(padding)) {
                 item(key = "tpl-head") {
-                    Text("Quick templates — one tap adds the rule",
+                    Text("Quick templates — tap to customise & add, or + for quick add",
                         modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -178,6 +186,9 @@ fun SortRulesScreen(nav: NavController, appVm: AppViewModel, vm: StorageViewMode
                             }) { Icon(Icons.Rounded.AddCircle, "Add rule") }
                         },
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        modifier = Modifier.clickable {
+                            openEditor(t.matchType, t.pattern, t.targetPath, t.source)
+                        },
                     )
                 }
                 item(key = "rules-head") {
@@ -245,6 +256,14 @@ fun SortRulesScreen(nav: NavController, appVm: AppViewModel, vm: StorageViewMode
                                 }
                                 Switch(checked = r.enabled,
                                     onCheckedChange = { vm.toggleRule(r, it) })
+                                IconButton(onClick = {
+                                    openEditor(r.matchType, r.pattern, r.targetPath,
+                                        r.sourcePath, r)
+                                }) {
+                                    Icon(Icons.Rounded.Edit, "Edit",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp))
+                                }
                                 IconButton(onClick = { vm.deleteRule(r) }) {
                                     Icon(Icons.Rounded.Delete, "Delete",
                                         tint = MaterialTheme.colorScheme.error,
@@ -306,7 +325,7 @@ fun SortRulesScreen(nav: NavController, appVm: AppViewModel, vm: StorageViewMode
                     Icon(Icons.Rounded.DriveFileMove, null,
                         tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(10.dp))
-                    Text("New sort rule")
+                    Text(if (editing != null) "Edit sort rule" else "New sort rule")
                 }
             },
             text = {
@@ -431,13 +450,21 @@ fun SortRulesScreen(nav: NavController, appVm: AppViewModel, vm: StorageViewMode
             confirmButton = {
                 Button(
                     onClick = {
-                        vm.addRule(matchType, pattern.trim(), target.trim(), source)
-                        pattern = ""; target = ""; source = null; showAdd = false
+                        val p = pattern.trim(); val t = target.trim()
+                        val r = editing
+                        if (r != null) vm.updateRule(r.copy(
+                            matchType = matchType, pattern = p,
+                            targetPath = t, sourcePath = source))
+                        else vm.addRule(matchType, p, t, source)
+                        pattern = ""; target = ""; source = null
+                        editing = null; showAdd = false
                     },
                     enabled = pattern.isNotBlank() && target.isNotBlank(),
-                ) { Text("Add rule") }
+                ) { Text(if (editing != null) "Save" else "Add rule") }
             },
-            dismissButton = { TextButton(onClick = { showAdd = false }) { Text("Cancel") } },
+            dismissButton = {
+                TextButton(onClick = { editing = null; showAdd = false }) { Text("Cancel") }
+            },
         )
     }
 

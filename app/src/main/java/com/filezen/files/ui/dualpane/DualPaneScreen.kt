@@ -74,6 +74,9 @@ fun DualPaneScreen(nav: NavController, appVm: AppViewModel) {
     }
     LaunchedEffect(Unit) { load(left); load(right) }
 
+    // Folder picker — which pane is being redirected (null = closed).
+    var pickFor by remember { mutableStateOf<PaneState?>(null) }
+
     // Only one pane may hold a selection at a time — keeps "copy to other"
     // unambiguous.
     fun selectIn(p: PaneState, other: PaneState, path: String) {
@@ -150,7 +153,8 @@ fun DualPaneScreen(nav: NavController, appVm: AppViewModel) {
                     panes.forEachIndexed { i, p ->
                         Box(Modifier.weight(1f).fillMaxHeight()) {
                             Pane(p, i, active == i, { active = i }, { load(p) },
-                                { path -> selectIn(p, panes[1 - i], path) })
+                                { path -> selectIn(p, panes[1 - i], path) },
+                                { pickFor = p })
                         }
                         if (i == 0) VerticalDivider()
                     }
@@ -160,7 +164,8 @@ fun DualPaneScreen(nav: NavController, appVm: AppViewModel) {
                     panes.forEachIndexed { i, p ->
                         Box(Modifier.weight(1f).fillMaxWidth()) {
                             Pane(p, i, active == i, { active = i }, { load(p) },
-                                { path -> selectIn(p, panes[1 - i], path) })
+                                { path -> selectIn(p, panes[1 - i], path) },
+                                { pickFor = p })
                         }
                         if (i == 0) HorizontalDivider()
                     }
@@ -168,13 +173,26 @@ fun DualPaneScreen(nav: NavController, appVm: AppViewModel) {
             }
         }
     }
+
+    pickFor?.let { p ->
+        com.filezen.files.ui.common.FolderPickerSheet(
+            startPath = p.path,
+            onPick = { picked ->
+                p.path = picked
+                p.selection.value = emptySet()
+                pickFor = null
+                scope.launch { load(p) }
+            },
+            onDismiss = { pickFor = null },
+        )
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun Pane(p: PaneState, index: Int, active: Boolean,
                  onFocus: () -> Unit, reload: suspend () -> Unit,
-                 onSelect: (String) -> Unit) {
+                 onSelect: (String) -> Unit, onPickFolder: () -> Unit) {
     val scope = rememberCoroutineScope()
     val parent = File(p.path).parent
     Column(Modifier.fillMaxSize().clickable { onFocus() }) {
@@ -194,6 +212,10 @@ private fun Pane(p: PaneState, index: Int, active: Boolean,
                     fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f))
+                IconButton(onClick = onPickFolder, modifier = Modifier.size(26.dp)) {
+                    Icon(Icons.Rounded.FolderOpen, "Choose folder",
+                        modifier = Modifier.size(16.dp))
+                }
                 if (p.selection.value.isNotEmpty()) {
                     Text("${p.selection.value.size} sel",
                         style = MaterialTheme.typography.labelSmall,

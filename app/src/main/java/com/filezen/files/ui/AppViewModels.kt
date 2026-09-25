@@ -700,7 +700,10 @@ class StorageViewModel : ViewModel() {
                 val root = Environment.getExternalStorageDirectory()
                 _usage.value = StorageAnalyzer.usage(root)
                 _categories.value = StorageAnalyzer.categories(root)
-                _large.value = StorageAnalyzer.largeFiles(root)
+                // Collect everything ≥20 MB once; the screen filters by
+                // threshold client-side (20/50/100 MB chips) without rescanning.
+                _large.value = StorageAnalyzer.largeFiles(root,
+                    minBytes = 20L * 1024 * 1024, limit = 500)
                 _dups.value = StorageAnalyzer.duplicates(root, cache = c.db.hashCache())
             } finally { _analyzing.value = false }
         }
@@ -721,6 +724,10 @@ class StorageViewModel : ViewModel() {
                 matchType = matchType, pattern = pattern,
                 targetPath = target, sourcePath = sourcePath))
         }
+    fun updateRule(r: SortRule) = viewModelScope.launch {
+        File(r.targetPath).mkdirs()
+        c.db.sortRules().insert(r)
+    }
     fun deleteRule(r: SortRule) = viewModelScope.launch { c.db.sortRules().delete(r) }
     fun toggleRule(r: SortRule, enabled: Boolean) = viewModelScope.launch { c.db.sortRules().setEnabled(r.id, enabled) }
     fun setAutoSort(v: Boolean) = viewModelScope.launch { c.settings.setAutoSort(v) }
