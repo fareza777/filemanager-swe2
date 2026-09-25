@@ -288,6 +288,11 @@ class HomeViewModel : ViewModel() {
             }.getOrDefault(0L)
             dupScanned = true
         }
+        // Files deleted anywhere disappear from Recent instantly, then the
+        // re-query keeps the list honest after the index settles.
+        viewModelScope.launch {
+            merge(c.ops.filesVersion, c.fileIndex.version).drop(2).collect { refresh() }
+        }
     }
 
     private fun recentRoots(): List<File> = listOf(
@@ -345,6 +350,17 @@ class HomeViewModel : ViewModel() {
 
 class BrowseViewModel : ViewModel() {
     private val c get() = FileZenApp.c
+
+    init {
+        // Reload the open folder the instant files change anywhere (in-app ops
+        // bump filesVersion; external deletes arrive via the index watcher).
+        viewModelScope.launch {
+            merge(c.ops.filesVersion, c.fileIndex.version).drop(2).collect {
+                val p = _path.value
+                if (p.isNotBlank()) load(p)
+            }
+        }
+    }
 
     private val _path = MutableStateFlow(Environment.getExternalStorageDirectory().absolutePath)
     val path: StateFlow<String> = _path
@@ -693,6 +709,25 @@ class StorageViewModel : ViewModel() {
     val autoSort = c.settings.autoSort
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
+    init {
+        // Gone files vanish instantly (op bumps + index watcher), then a full
+        // re-analyse refreshes category counts a moment later.
+        viewModelScope.launch {
+            merge(c.ops.filesVersion, c.fileIndex.version).drop(2).collect {
+                pruneGone()
+                analyze()
+            }
+        }
+    }
+
+    private suspend fun pruneGone() = withContext(Dispatchers.IO) {
+        _large.value = _large.value.filter { File(it.entry.path).exists() }
+        _dups.value = _dups.value.mapNotNull { g ->
+            val files = g.files.filter { File(it.path).exists() }
+            if (files.size > 1) DuplicateGroup(g.hash, files) else null
+        }
+    }
+
     fun analyze() {
         if (_analyzing.value) return
         _analyzing.value = true
@@ -787,6 +822,25 @@ class SearchViewModel : ViewModel() {
 
     private var job: Job? = null
     private var cJob: Job? = null
+    private var lastRoots: List<File> = emptyList()
+    private var lastContentQuery = ""
+
+    init {
+        // Files deleted or moved anywhere vanish instantly: prune gone paths,
+        // then re-run the active search so counts stay exact.
+        viewModelScope.launch {
+            merge(c.ops.filesVersion, c.fileIndex.version).drop(2).collect {
+                pruneGone()
+                if (_results.value.isNotEmpty() && lastRoots.isNotEmpty()) search(lastRoots)
+                if (_hits.value.isNotEmpty() && lastContentQuery.isNotBlank()) contentSearch(lastContentQuery)
+            }
+        }
+    }
+
+    private fun pruneGone() {
+        _results.value = _results.value.filter { File(it.path).exists() }
+        _hits.value = _hits.value.filter { File(it.path).exists() }
+    }
 
     fun setFilter(f: SearchFilter) { _filter.value = f }
 
@@ -803,6 +857,7 @@ class SearchViewModel : ViewModel() {
     fun contentSearch(q: String) {
         cJob?.cancel()
         if (q.isBlank()) { _hits.value = emptyList(); return }
+        lastContentQuery = q.trim()
         _searching.value = true
         cJob = viewModelScope.launch {
             try { _hits.value = c.contentIndex.search(q.trim()) }
@@ -812,6 +867,7 @@ class SearchViewModel : ViewModel() {
 
     fun search(roots: List<File>) {
         job?.cancel()
+        lastRoots = roots
         _results.value = emptyList()
         val f = _filter.value
         if (f.query.isBlank() && f.types.isEmpty() && f.minSize == null &&
@@ -821,14 +877,24 @@ class SearchViewModel : ViewModel() {
             try {
                 if (f.query.isNotBlank()) c.settings.addRecentQuery(f.query)
                 if (c.fileIndex.ready.value) {
-                    // Instant path: query the persisted disk index.
-                    val rows = c.fileIndex.search(f.query.takeIf { it.isNotBlank() } ?: "")
-                    _results.value = rows.asSequence()
-                        .map { FileEntry(it.path, it.name, false, it.size, it.lastModified,
-                            FileType.valueOf(it.type)) }
-                        .filter { com.filezen.files.core.scan.Scanner.matches(it, f) }
-                        .sortedByDescending { it.lastModified }
-                        .take(2000).toList()
+                    // Instant path: query the persisted disk index. Type-only
+                    // filters go through byType — a blank name search is capped
+                    // at 500 rows and would hide most files of that type.
+                    // exists() drops ghosts: files deleted outside the watched
+                    // hot-roots stay in the index until the next rebuild.
+                    _results.value = withContext(Dispatchers.IO) {
+                        val rows = if (f.query.isBlank() && f.types.isNotEmpty())
+                            f.types.flatMap { t -> c.fileIndex.byType(t.name, 50000) }
+                        else
+                            c.fileIndex.search(f.query.takeIf { it.isNotBlank() } ?: "", 5000)
+                        rows.asSequence()
+                            .map { FileEntry(it.path, it.name, false, it.size, it.lastModified,
+                                FileType.valueOf(it.type)) }
+                            .filter { com.filezen.files.core.scan.Scanner.matches(it, f) }
+                            .filter { File(it.path).exists() }
+                            .sortedByDescending { it.lastModified }
+                            .take(5000).toList()
+                    }
                 } else {
                     Scanner.scan(roots, f).collect { batch ->
                         _results.value = (_results.value + batch)

@@ -36,6 +36,10 @@ class FileIndex(private val db: ZenDatabase) {
     private val _ready = MutableStateFlow(false)
     val ready: StateFlow<Boolean> = _ready
 
+    /** Bumped whenever the index content changes — screens prune/re-query. */
+    private val _version = MutableStateFlow(0)
+    val version: StateFlow<Int> = _version
+
     private val refreshMutex = Mutex()
     @Volatile private var lastRefresh = 0L
     @Volatile private var refreshRequested = false
@@ -82,6 +86,7 @@ class FileIndex(private val db: ZenDatabase) {
             }
         flush()
         _ready.value = true
+        _version.value += 1
     }
 
     /**
@@ -112,6 +117,7 @@ class FileIndex(private val db: ZenDatabase) {
             val dirs = ArrayList<File>(256)
             var visited = 0
             var truncated = false
+            var changed = false
             val stack = ArrayDeque<File>()
             liveRoots.forEach { stack.add(it) }
             while (stack.isNotEmpty()) {
@@ -127,6 +133,7 @@ class FileIndex(private val db: ZenDatabase) {
                     }
                     if (f.isHidden) continue
                     seen += f.absolutePath
+                    if (f.absolutePath !in existing) changed = true
                     val e = FileEntry.from(f)
                     batch += FileIndexEntry(
                         path = f.absolutePath, name = f.name, size = e.size,
@@ -137,14 +144,19 @@ class FileIndex(private val db: ZenDatabase) {
                 if (truncated) break
             }
             flush()
-            // Only drop missing rows when the walk covered everything —
-            // otherwise we'd wrongly delete files past the item cap.
+            // Only drop rows under dirs the walk actually listed — a failed
+            // or truncated listing must never wipe that dir's index rows.
             if (!truncated) {
-                val gone = (existing - seen).toList()
-                gone.chunked(500).forEach { db.fileIndex().removeAll(it) }
+                val covered = dirs.mapTo(HashSet()) { it.absolutePath }
+                val gone = existing.filter { File(it).parent in covered } - seen
+                if (gone.isNotEmpty()) {
+                    gone.chunked(500).forEach { db.fileIndex().removeAll(it) }
+                    changed = true
+                }
             }
             // Extend the watch to directories discovered during this pass.
             if (fire != null) watchDirs(dirs)
+            if (changed) _version.value += 1
         } finally {
             refreshMutex.unlock()
             if (refreshRequested) {
