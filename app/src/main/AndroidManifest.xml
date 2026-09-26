@@ -27,6 +27,8 @@
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
     <!-- Per-app storage stats (StorageStatsManager) — granted via Usage Access settings -->
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
+    <!-- Uninstall apps from the Apps & data page (user confirms via system dialog) -->
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
 
     <!-- Shizuku (power file access) — package visibility to detect the app. -->
     <queries>

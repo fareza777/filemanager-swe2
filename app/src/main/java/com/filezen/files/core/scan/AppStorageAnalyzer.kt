@@ -17,6 +17,9 @@ data class AppStorageEntry(
     val appBytes: Long,
     val dataBytes: Long,
     val cacheBytes: Long,
+    val isSystem: Boolean = false,
+    /** The app's shared-storage data dir when it exists (browsable). */
+    val extDataPath: String? = null,
 ) {
     val totalBytes: Long get() = appBytes + dataBytes + cacheBytes
 }
@@ -57,19 +60,26 @@ object AppStorageAnalyzer {
         val sm = ctx.getSystemService(Context.STORAGE_STATS_SERVICE) as StorageStatsManager
         val pm = ctx.packageManager
         val user = Process.myUserHandle()
+        val extData = java.io.File(
+            android.os.Environment.getExternalStorageDirectory(),
+            "Android/data")
         val out = ArrayList<AppStorageEntry>(256)
         for (ai in pm.getInstalledApplications(0)) {
             try {
                 val st = sm.queryStatsForPackage(StorageManager.UUID_DEFAULT, ai.packageName, user)
                 val total = st.appBytes + st.dataBytes + st.cacheBytes
                 if (total <= 0) continue
+                val extDir = java.io.File(extData, ai.packageName)
                 out += AppStorageEntry(
                     packageName = ai.packageName,
                     label = runCatching { ai.loadLabel(pm).toString() }
                         .getOrDefault(ai.packageName),
                     appBytes = st.appBytes,
                     dataBytes = st.dataBytes,
-                    cacheBytes = st.cacheBytes)
+                    cacheBytes = st.cacheBytes,
+                    isSystem = ai.flags and
+                        android.content.pm.ApplicationInfo.FLAG_SYSTEM != 0,
+                    extDataPath = if (extDir.exists()) extDir.absolutePath else null)
             } catch (e: Exception) {
                 // Package uninstalled mid-scan or restricted profile — skip.
             }

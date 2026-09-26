@@ -158,26 +158,40 @@ fun StorageScreen(nav: NavController, appVm: AppViewModel, vm: StorageViewModel 
             // system residue — everything together accounts for used storage.
             val appsBytes = apps.sumOf { it.totalBytes }
             if (categories.isNotEmpty() || appsBytes > 0) {
-                val fileOrder = listOf(
-                    com.filezen.files.core.model.FileType.IMAGE to "Images",
-                    com.filezen.files.core.model.FileType.VIDEO to "Videos",
-                    com.filezen.files.core.model.FileType.AUDIO to "Audio",
-                    com.filezen.files.core.model.FileType.PDF to "PDFs",
-                    com.filezen.files.core.model.FileType.DOCUMENT to "Documents",
-                    com.filezen.files.core.model.FileType.ARCHIVE to "Archives",
-                    com.filezen.files.core.model.FileType.TEXT to "Text & code",
-                    com.filezen.files.core.model.FileType.APK to "App packages",
-                    com.filezen.files.core.model.FileType.OTHER to "Other accessible files",
-                )
+                // One row per slice of used storage, biggest first — apps
+                // compete with file categories on equal footing.
+                data class Row(val label: String, val bytes: Long,
+                    val type: com.filezen.files.core.model.FileType?,
+                    val apps: Boolean = false, val system: Boolean = false)
+                val rows = mutableListOf<Row>()
+                if (appsBytes > 0)
+                    rows += Row("Apps & data", appsBytes, null, apps = true)
+                categories.forEach { c ->
+                    val label = when (c.type) {
+                        com.filezen.files.core.model.FileType.IMAGE -> "Images"
+                        com.filezen.files.core.model.FileType.VIDEO -> "Videos"
+                        com.filezen.files.core.model.FileType.AUDIO -> "Audio"
+                        com.filezen.files.core.model.FileType.PDF -> "PDFs"
+                        com.filezen.files.core.model.FileType.DOCUMENT -> "Documents"
+                        com.filezen.files.core.model.FileType.ARCHIVE -> "Archives"
+                        com.filezen.files.core.model.FileType.TEXT -> "Text & code"
+                        com.filezen.files.core.model.FileType.APK -> "App packages"
+                        com.filezen.files.core.model.FileType.OTHER -> "Other accessible files"
+                        else -> c.type.name
+                    }
+                    rows += Row(label, c.bytes, c.type)
+                }
+                if (unaccounted > 0)
+                    rows += Row("System & unaccounted", unaccounted, null, system = true)
+                rows.sortByDescending { it.bytes }
                 val fileBytes = categories.sumOf { it.bytes }
-                val maxBytes = maxOf(
-                    categories.maxOfOrNull { it.bytes } ?: 0,
-                    appsBytes, unaccounted).coerceAtLeast(1)
+                val maxBytes = (rows.maxOfOrNull { it.bytes } ?: 0).coerceAtLeast(1)
                 SectionHeader("What's using storage")
                 Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                     Column(Modifier.padding(vertical = 4.dp)) {
-                        if (appsBytes > 0) {
+                        rows.forEach { row ->
+                            if (row.apps) {
                             val share by animateFloatAsState(
                                 appsBytes.toFloat() / maxBytes,
                                 tween(700), label = "appsShare")
@@ -209,60 +223,59 @@ fun StorageScreen(nav: NavController, appVm: AppViewModel, vm: StorageViewModel 
                                 modifier = Modifier.clickable { nav.navigate(Routes.APPDATA) },
                                 colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                             )
-                        }
-                        fileOrder.forEach { (t, label) ->
-                            val c = categories.firstOrNull { it.type == t } ?: return@forEach
-                            val e = com.filezen.files.core.model.FileEntry("", "", false, 0, 0, c.type)
-                            val share by animateFloatAsState(
-                                c.bytes.toFloat() / maxBytes,
-                                tween(700), label = "share")
-                            ListItem(
-                                headlineContent = { Text(label) },
-                                supportingContent = {
-                                    Column {
-                                        Text("${c.count} files")
-                                        Spacer(Modifier.height(5.dp))
-                                        Box(
-                                            Modifier.fillMaxWidth(0.7f).height(3.dp)
-                                                .clip(RoundedCornerShape(2.dp))
-                                                .background(MaterialTheme.colorScheme.surfaceVariant)
-                                        ) {
+                            } else if (row.system) {
+                                ListItem(
+                                    headlineContent = { Text(row.label) },
+                                    supportingContent = { Text("Android system, reserved space & overhead") },
+                                    leadingContent = { Icon(Icons.Rounded.PhoneAndroid, null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                                    trailingContent = { Text(formatSize(row.bytes),
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                                )
+                            } else {
+                                val c = categories.first { it.type == row.type }
+                                val e = com.filezen.files.core.model.FileEntry("", "", false, 0, 0, c.type)
+                                val share by animateFloatAsState(
+                                    row.bytes.toFloat() / maxBytes,
+                                    tween(700), label = "share")
+                                ListItem(
+                                    headlineContent = { Text(row.label) },
+                                    supportingContent = {
+                                        Column {
+                                            Text("${c.count} files")
+                                            Spacer(Modifier.height(5.dp))
                                             Box(
-                                                Modifier.fillMaxHeight().fillMaxWidth(share)
+                                                Modifier.fillMaxWidth(0.7f).height(3.dp)
                                                     .clip(RoundedCornerShape(2.dp))
-                                                    .background(tintFor(e))
-                                            )
+                                                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                                            ) {
+                                                Box(
+                                                    Modifier.fillMaxHeight().fillMaxWidth(share)
+                                                        .clip(RoundedCornerShape(2.dp))
+                                                        .background(tintFor(e))
+                                                )
+                                            }
                                         }
-                                    }
-                                },
-                                leadingContent = {
-                                    Icon(iconFor(e), null, tint = tintFor(e))
-                                },
-                                trailingContent = {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(formatSize(c.bytes), fontWeight = FontWeight.Medium)
-                                        Icon(Icons.Rounded.ChevronRight, null,
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.size(18.dp))
-                                    }
-                                },
-                                modifier = Modifier.clickable {
-                                    nav.navigate(Routes.SEARCH + "?type=" + c.type.name)
-                                },
-                                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                            )
-                        }
-                        if (unaccounted > 0) {
-                            ListItem(
-                                headlineContent = { Text("System & unaccounted") },
-                                supportingContent = { Text("Android system, reserved space & overhead") },
-                                leadingContent = { Icon(Icons.Rounded.PhoneAndroid, null,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant) },
-                                trailingContent = { Text(formatSize(unaccounted),
-                                    fontWeight = FontWeight.Medium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant) },
-                                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                            )
+                                    },
+                                    leadingContent = {
+                                        Icon(iconFor(e), null, tint = tintFor(e))
+                                    },
+                                    trailingContent = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(formatSize(row.bytes), fontWeight = FontWeight.Medium)
+                                            Icon(Icons.Rounded.ChevronRight, null,
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(18.dp))
+                                        }
+                                    },
+                                    modifier = Modifier.clickable {
+                                        nav.navigate(Routes.SEARCH + "?type=" + c.type.name)
+                                    },
+                                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                                )
+                            }
                         }
                         usage?.let { u ->
                             val accounted = fileBytes + appsBytes + unaccounted
@@ -279,8 +292,14 @@ fun StorageScreen(nav: NavController, appVm: AppViewModel, vm: StorageViewModel 
             if (large.isNotEmpty()) {
                 var threshold by remember { mutableStateOf(20L) }
                 var showAll by remember { mutableStateOf(false) }
+                var sortKey by remember { mutableStateOf("size") }
                 val thresholds = listOf(20L, 50L, 100L)
                 val filtered = large.filter { it.entry.size >= threshold * 1024 * 1024 }
+                    .let { l -> when (sortKey) {
+                        "name" -> l.sortedBy { it.entry.name.lowercase() }
+                        "date" -> l.sortedByDescending { it.entry.lastModified }
+                        else -> l.sortedByDescending { it.entry.size }
+                    } }
                 val shown = if (showAll) filtered else filtered.take(10)
                 LaunchedEffect(filtered.size, dups.size) {
                     sel.setAll(sel.selected.filter { p ->
@@ -300,6 +319,16 @@ fun StorageScreen(nav: NavController, appVm: AppViewModel, vm: StorageViewModel 
                             label = { Text("> ${t} MB") },
                         )
                     }
+                    Icon(Icons.Rounded.Sort, null, Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    listOf("size" to "Size", "name" to "Name", "date" to "Newest")
+                        .forEach { (k, l) ->
+                            FilterChip(
+                                selected = sortKey == k,
+                                onClick = { sortKey = k },
+                                label = { Text(l, style = MaterialTheme.typography.labelSmall) },
+                            )
+                        }
                 }
                 Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
