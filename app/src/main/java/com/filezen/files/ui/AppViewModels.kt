@@ -291,7 +291,15 @@ class HomeViewModel : ViewModel() {
         // Files deleted anywhere disappear from Recent instantly, then the
         // re-query keeps the list honest after the index settles.
         viewModelScope.launch {
-            merge(c.ops.filesVersion, c.fileIndex.version).drop(2).collect { refresh() }
+            merge(c.ops.filesVersion, c.fileIndex.version).drop(2).collect {
+                refresh()
+                // Keep the full Recent page honest too — drop ghosts on the
+                // spot, then let a delta pass repopulate accurately.
+                if (_allRecent.value.isNotEmpty()) {
+                    _allRecent.value = _allRecent.value.filter { File(it.path).exists() }
+                    loadAllRecent()
+                }
+            }
         }
     }
 
@@ -332,13 +340,20 @@ class HomeViewModel : ViewModel() {
     }
 
     /** Index-backed "every file on storage, newest first" — null when the index
-     *  hasn't finished building yet so callers fall back to a flat scan. */
+     *  hasn't finished building yet so callers fall back to a flat scan.
+     *  Over-fetches then filters ghosts: index rows can outlive their files
+     *  (deleted outside a watched dir), so anything whose file is gone is
+     *  dropped before display. */
     private suspend fun recentViaIndex(limit: Int): List<FileEntry>? {
         if (!c.fileIndex.ready.value) return null
-        val rows = c.fileIndex.recent(limit)
+        val rows = c.fileIndex.recent(limit * 5)
         if (rows.isEmpty()) return null
-        return rows.map { FileEntry(it.path, it.name, false, it.size, it.lastModified,
-            FileType.valueOf(it.type)) }
+        return rows.asSequence()
+            .filter { File(it.path).exists() }
+            .take(limit)
+            .map { FileEntry(it.path, it.name, false, it.size, it.lastModified,
+                FileType.valueOf(it.type)) }
+            .toList()
     }
 
     /** Optimistically drop entries after they're moved/deleted. */
