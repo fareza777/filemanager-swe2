@@ -41,6 +41,7 @@ import com.filezen.files.ui.preview.PreviewScreen
 import com.filezen.files.ui.search.SearchScreen
 import com.filezen.files.ui.settings.SettingsScreen
 import com.filezen.files.ui.storage.StorageScreen
+import com.filezen.files.ui.storage.AppsDataScreen
 import com.filezen.files.ui.theme.FileZenTheme
 import com.filezen.files.ui.transfer.TransferScreen
 import com.filezen.files.ui.tools.ToolsScreen
@@ -96,6 +97,7 @@ object Routes {
     const val SIMILAR = "similar"
     const val ZSTD = "zstd"
     const val APPBACKUP = "appbackup"
+    const val APPDATA = "appsdata"
     const val ARCHIVE = "archive/{path}?inner={inner}"
     fun folder(path: String) = "folder/${Uri.encode(path)}"
     fun preview(path: String) = "preview/${Uri.encode(path)}"
@@ -314,6 +316,7 @@ fun FileZenApp_(appVm: AppViewModel) {
             composable(Routes.SIMILAR) { SimilarScreen(nav, appVm) }
             composable(Routes.ZSTD) { ZstdScreen(nav) }
             composable(Routes.APPBACKUP) { AppBackupScreen(nav) }
+            composable(Routes.APPDATA) { AppsDataScreen(nav) }
             composable(
                 Routes.ARCHIVE,
                 arguments = listOf(

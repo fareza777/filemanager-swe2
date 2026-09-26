@@ -25,6 +25,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- App backup (APK exporter): list all installed packages -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <!-- Per-app storage stats (StorageStatsManager) — granted via Usage Access settings -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
 
     <!-- Shizuku (power file access) — package visibility to detect the app. -->
     <queries>

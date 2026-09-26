@@ -48,11 +48,24 @@ fun StorageScreen(nav: NavController, appVm: AppViewModel, vm: StorageViewModel 
     val trashSize by vm.trashSize.collectAsState()
     val autoSort by vm.autoSort.collectAsState()
     val adFree by appVm.adFree.collectAsState()
+    val apps by vm.apps.collectAsState()
+    val usageGranted by vm.usageGranted.collectAsState()
+    val deviceBytes by vm.deviceBytes.collectAsState()
+    val unaccounted by vm.unaccounted.collectAsState()
     val sel = rememberSelection()
     val filesVer by appVm.filesVersion.collectAsState()
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
 
     LaunchedEffect(Unit) { vm.analyze() }
     LaunchedEffect(filesVer) { if (filesVer > 0) vm.analyze() }
+    DisposableEffect(lifecycleOwner) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, ev ->
+            if (ev == androidx.lifecycle.Lifecycle.Event.ON_RESUME) vm.refreshApps()
+        }
+        lifecycleOwner.lifecycle.addObserver(obs)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
+    }
 
     Scaffold(
         topBar = {
@@ -84,6 +97,41 @@ fun StorageScreen(nav: NavController, appVm: AppViewModel, vm: StorageViewModel 
                             Text("${formatSize(u.used)} used", color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text("${formatSize(u.free)} free", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
+                        if (deviceBytes > u.total) {
+                            Spacer(Modifier.height(6.dp))
+                            Text("Device ${formatSize(deviceBytes)} · usable ${formatSize(u.total)} — " +
+                                    "the rest is reserved by the system",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+
+            // Usage Access CTA — app private data can't be measured without it.
+            if (!usageGranted) {
+                Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
+                    Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Rounded.Apps, null,
+                            tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                            modifier = Modifier.size(36.dp))
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Apps & data hidden", fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer)
+                            Text("Allow Usage Access to analyse app storage — " +
+                                    "usually the biggest chunk of used space.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer)
+                        }
+                    }
+                    Button(
+                        onClick = { ctx.startActivity(
+                            com.filezen.files.core.scan.AppStorageAnalyzer.usageAccessIntent()) },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 14.dp)) {
+                        Text("Allow Usage Access")
                     }
                 }
             }
@@ -106,20 +154,70 @@ fun StorageScreen(nav: NavController, appVm: AppViewModel, vm: StorageViewModel 
                 }
             }
 
-            // Categories — tap a row to explore files of that type
-            if (categories.isNotEmpty()) {
-                val maxBytes = categories.maxOf { it.bytes }.coerceAtLeast(1)
-                SectionHeader("By type")
+            // Full breakdown: apps (StatsManager) + file categories (walk) +
+            // system residue — everything together accounts for used storage.
+            val appsBytes = apps.sumOf { it.totalBytes }
+            if (categories.isNotEmpty() || appsBytes > 0) {
+                val fileOrder = listOf(
+                    com.filezen.files.core.model.FileType.IMAGE to "Images",
+                    com.filezen.files.core.model.FileType.VIDEO to "Videos",
+                    com.filezen.files.core.model.FileType.AUDIO to "Audio",
+                    com.filezen.files.core.model.FileType.PDF to "PDFs",
+                    com.filezen.files.core.model.FileType.DOCUMENT to "Documents",
+                    com.filezen.files.core.model.FileType.ARCHIVE to "Archives",
+                    com.filezen.files.core.model.FileType.TEXT to "Text & code",
+                    com.filezen.files.core.model.FileType.APK to "App packages",
+                    com.filezen.files.core.model.FileType.OTHER to "Other accessible files",
+                )
+                val fileBytes = categories.sumOf { it.bytes }
+                val maxBytes = maxOf(
+                    categories.maxOfOrNull { it.bytes } ?: 0,
+                    appsBytes, unaccounted).coerceAtLeast(1)
+                SectionHeader("What's using storage")
                 Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                     Column(Modifier.padding(vertical = 4.dp)) {
-                        categories.take(8).forEach { c ->
+                        if (appsBytes > 0) {
+                            val share by animateFloatAsState(
+                                appsBytes.toFloat() / maxBytes,
+                                tween(700), label = "appsShare")
+                            ListItem(
+                                headlineContent = { Text("Apps & data") },
+                                supportingContent = {
+                                    Column {
+                                        Text("${apps.size} apps · app + private data + cache")
+                                        Spacer(Modifier.height(5.dp))
+                                        Box(Modifier.fillMaxWidth(0.7f).height(3.dp)
+                                            .clip(RoundedCornerShape(2.dp))
+                                            .background(MaterialTheme.colorScheme.surfaceVariant)) {
+                                            Box(Modifier.fillMaxHeight().fillMaxWidth(share)
+                                                .clip(RoundedCornerShape(2.dp))
+                                                .background(MaterialTheme.colorScheme.primary))
+                                        }
+                                    }
+                                },
+                                leadingContent = { Icon(Icons.Rounded.Apps, null,
+                                    tint = MaterialTheme.colorScheme.primary) },
+                                trailingContent = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(formatSize(appsBytes), fontWeight = FontWeight.Medium)
+                                        Icon(Icons.Rounded.ChevronRight, null,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(18.dp))
+                                    }
+                                },
+                                modifier = Modifier.clickable { nav.navigate(Routes.APPDATA) },
+                                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                            )
+                        }
+                        fileOrder.forEach { (t, label) ->
+                            val c = categories.firstOrNull { it.type == t } ?: return@forEach
                             val e = com.filezen.files.core.model.FileEntry("", "", false, 0, 0, c.type)
                             val share by animateFloatAsState(
                                 c.bytes.toFloat() / maxBytes,
                                 tween(700), label = "share")
                             ListItem(
-                                headlineContent = { Text(c.type.name.lowercase().replaceFirstChar { it.uppercase() }) },
+                                headlineContent = { Text(label) },
                                 supportingContent = {
                                     Column {
                                         Text("${c.count} files")
@@ -153,6 +251,25 @@ fun StorageScreen(nav: NavController, appVm: AppViewModel, vm: StorageViewModel 
                                 },
                                 colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                             )
+                        }
+                        if (unaccounted > 0) {
+                            ListItem(
+                                headlineContent = { Text("System & unaccounted") },
+                                supportingContent = { Text("Android system, reserved space & overhead") },
+                                leadingContent = { Icon(Icons.Rounded.PhoneAndroid, null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                                trailingContent = { Text(formatSize(unaccounted),
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                            )
+                        }
+                        usage?.let { u ->
+                            val accounted = fileBytes + appsBytes + unaccounted
+                            Text("Total ${formatSize(accounted)} of ${formatSize(u.used)} used",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
                         }
                     }
                 }

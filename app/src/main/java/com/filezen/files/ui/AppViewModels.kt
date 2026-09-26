@@ -698,6 +698,18 @@ class StorageViewModel : ViewModel() {
     private val _analyzing = MutableStateFlow(false)
     val analyzing: StateFlow<Boolean> = _analyzing
 
+    // Apps & data — per-app storage via StorageStatsManager (needs Usage Access)
+    private val _apps = MutableStateFlow<List<AppStorageEntry>>(emptyList())
+    val apps: StateFlow<List<AppStorageEntry>> = _apps
+    private val _usageGranted = MutableStateFlow(false)
+    val usageGranted: StateFlow<Boolean> = _usageGranted
+    /** Full device capacity incl. reserved space (vs usable filesystem size). */
+    private val _deviceBytes = MutableStateFlow(0L)
+    val deviceBytes: StateFlow<Long> = _deviceBytes
+    /** Used bytes that belong to no file category or app — system & overhead. */
+    private val _unaccounted = MutableStateFlow(0L)
+    val unaccounted: StateFlow<Long> = _unaccounted
+
     val trashEntries = c.db.trash().all()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val trashSize = c.db.trash().totalSize()
@@ -728,19 +740,43 @@ class StorageViewModel : ViewModel() {
         }
     }
 
+    /** Re-check Usage Access + reload app storage (e.g. after returning
+     *  from the system settings screen). */
+    fun refreshApps() {
+        viewModelScope.launch {
+            val ctx = FileZenApp.instance
+            val granted = AppStorageAnalyzer.hasUsageAccess(ctx)
+            _usageGranted.value = granted
+            _apps.value = if (granted) AppStorageAnalyzer.perApp(ctx) else emptyList()
+            val classified = _categories.value.sumOf { it.bytes } +
+                _apps.value.sumOf { it.totalBytes }
+            _unaccounted.value = ((_usage.value?.used ?: 0) - classified).coerceAtLeast(0)
+        }
+    }
+
     fun analyze() {
         if (_analyzing.value) return
         _analyzing.value = true
         viewModelScope.launch {
             try {
                 val root = Environment.getExternalStorageDirectory()
+                val ctx = FileZenApp.instance
                 _usage.value = StorageAnalyzer.usage(root)
+                _deviceBytes.value = AppStorageAnalyzer.deviceTotalBytes(ctx)
                 _categories.value = StorageAnalyzer.categories(root)
                 // Collect everything ≥20 MB once; the screen filters by
                 // threshold client-side (20/50/100 MB chips) without rescanning.
                 _large.value = StorageAnalyzer.largeFiles(root,
                     minBytes = 20L * 1024 * 1024, limit = 500)
                 _dups.value = StorageAnalyzer.duplicates(root, cache = c.db.hashCache())
+                val granted = AppStorageAnalyzer.hasUsageAccess(ctx)
+                _usageGranted.value = granted
+                _apps.value = if (granted) AppStorageAnalyzer.perApp(ctx) else emptyList()
+                // System / reserved / inaccessible = used minus everything we
+                // classified — file categories (/sdcard walk) plus app bytes.
+                val classified = _categories.value.sumOf { it.bytes } +
+                    _apps.value.sumOf { it.totalBytes }
+                _unaccounted.value = ((_usage.value?.used ?: 0) - classified).coerceAtLeast(0)
             } finally { _analyzing.value = false }
         }
     }
