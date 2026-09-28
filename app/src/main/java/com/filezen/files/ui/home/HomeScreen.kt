@@ -44,8 +44,9 @@ import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(nav: NavController, appVm: AppViewModel, vm: HomeViewModel = viewModel()) {
-    val recent by vm.recent.collectAsState()
+fun HomeScreen(nav: NavController, appVm: AppViewModel,
+               vm: HomeViewModel = viewModel()) {
+    val recent by appVm.recent.collectAsState()
     val favorites by vm.favorites.collectAsState()
     val lastPath by vm.lastPath.collectAsState()
     val usage by vm.usage.collectAsState()
@@ -54,7 +55,7 @@ fun HomeScreen(nav: NavController, appVm: AppViewModel, vm: HomeViewModel = view
     val dupWasted by vm.dupWasted.collectAsState()
     val adFree by appVm.adFree.collectAsState()
 
-    LaunchedEffect(Unit) { vm.refresh() }
+    LaunchedEffect(Unit) { vm.refresh(); appVm.refreshRecent() }
 
     // Staggered entrance: each section fades + rises in turn.
     var entered by remember { mutableStateOf(false) }

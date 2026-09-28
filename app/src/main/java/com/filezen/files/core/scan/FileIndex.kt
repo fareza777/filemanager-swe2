@@ -189,7 +189,9 @@ class FileIndex(private val db: ZenDatabase) {
             }
         }
         fire = f
-        ws.launch(Dispatchers.IO) { watchDirs(collectDirs(watchRoots)) }
+        ws.launch(Dispatchers.IO) {
+            watchDirs(collectDirs(watchRoots))
+        }
     }
 
     fun stopWatching() {

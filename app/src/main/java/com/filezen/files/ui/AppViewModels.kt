@@ -229,72 +229,21 @@ class AppViewModel : ViewModel() {
             OpSummary(OpKind.CLEAN, results)
         }
     }
-}
 
-/** Feeds the Privacy / Safe-share screen with files that can carry metadata. */
-class PrivacyViewModel : ViewModel() {
-    private val c get() = FileZenApp.c
-
-    private val _files = MutableStateFlow<List<FileEntry>>(emptyList())
-    val files: StateFlow<List<FileEntry>> = _files
-    private val _scanning = MutableStateFlow(true)
-    val scanning: StateFlow<Boolean> = _scanning
-
-    init { refresh() }
-
-    fun refresh() {
-        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            _scanning.value = true
-            _files.value = c.db.fileIndex().allRows()
-                .filter { com.filezen.files.core.privacy.MetadataCleaner.hasAnySupport(it.path) }
-                .sortedByDescending { it.lastModified }
-                .take(300)
-                .map { FileEntry.from(File(it.path)) }
-            _scanning.value = false
-        }
-    }
-}
-
-class HomeViewModel : ViewModel() {
-    private val c get() = FileZenApp.c
+    // ---- recent files -------------------------------------------------
+    // One canonical list for the whole activity — the Home strip and the
+    // full Recent page both read this. Index bumps refresh it instantly,
+    // and rows whose file vanished are filtered before they can render.
     private val _recent = MutableStateFlow<List<FileEntry>>(emptyList())
     val recent: StateFlow<List<FileEntry>> = _recent
-    private val _lastPath = MutableStateFlow<String?>(null)
-    val lastPath: StateFlow<String?> = _lastPath
-    private val _usage = MutableStateFlow<StorageUsage?>(null)
-    val usage: StateFlow<StorageUsage?> = _usage
-    val favorites = c.db.favorites().all()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val untidyCount = c.db.inbox().untidy()
-        .map { it.size }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
-
     private val _allRecent = MutableStateFlow<List<FileEntry>>(emptyList())
     val allRecent: StateFlow<List<FileEntry>> = _allRecent
 
-    val trashSize = c.db.trash().totalSize()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
-    private val _dupWasted = MutableStateFlow(0L)
-    val dupWasted: StateFlow<Long> = _dupWasted
-    private var dupScanned = false
-
     init {
-        refresh()
-        // Duplicate scan is heavy — run once per VM, off the UI path.
-        viewModelScope.launch(Dispatchers.IO) {
-            _dupWasted.value = runCatching {
-                StorageAnalyzer.duplicates(Environment.getExternalStorageDirectory(), cache = c.db.hashCache())
-                    .sumOf { it.wasted }
-            }.getOrDefault(0L)
-            dupScanned = true
-        }
-        // Files deleted anywhere disappear from Recent instantly, then the
-        // re-query keeps the list honest after the index settles.
+        refreshRecent()
         viewModelScope.launch {
             merge(c.ops.filesVersion, c.fileIndex.version).drop(2).collect {
-                refresh()
-                // Keep the full Recent page honest too — drop ghosts on the
-                // spot, then let a delta pass repopulate accurately.
+                refreshRecent()
                 if (_allRecent.value.isNotEmpty()) {
                     _allRecent.value = _allRecent.value.filter { File(it.path).exists() }
                     loadAllRecent()
@@ -310,15 +259,11 @@ class HomeViewModel : ViewModel() {
         Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS),
     ).filter { it.exists() }
 
-    fun refresh() {
+    fun refreshRecent() {
         viewModelScope.launch {
-            _lastPath.value = c.settings.lastBrowsePath.first()
-            _usage.value = StorageAnalyzer.usage()
             _recent.value = withContext(Dispatchers.IO) {
                 recentViaIndex(40) ?: Scanner.recent(recentRoots(), limit = 40)
             }
-            // Freshness pass: delta-scan the hot roots, then re-read so files
-            // the watcher missed still show up moments later.
             launch {
                 c.fileIndex.refresh(c.fileIndex.hotRoots())
                 _recent.value = withContext(Dispatchers.IO) {
@@ -332,9 +277,10 @@ class HomeViewModel : ViewModel() {
         viewModelScope.launch {
             // Read the index first so the page paints instantly; the delta
             // pass then repopulates in the background for anything missed.
-            _allRecent.value = withContext(Dispatchers.IO) {
+            val r = withContext(Dispatchers.IO) {
                 recentViaIndex(2000) ?: Scanner.recent(recentRoots(), limit = 500)
             }
+            _allRecent.value = r
             launch {
                 c.fileIndex.refresh(c.fileIndex.hotRoots())
                 _allRecent.value = withContext(Dispatchers.IO) {
@@ -363,8 +309,70 @@ class HomeViewModel : ViewModel() {
 
     /** Optimistically drop entries after they're moved/deleted. */
     fun dropRecent(paths: Collection<String>) {
-        _allRecent.value = _allRecent.value.filter { it.path !in paths }
         _recent.value = _recent.value.filter { it.path !in paths }
+        _allRecent.value = _allRecent.value.filter { it.path !in paths }
+    }
+}
+
+/** Feeds the Privacy / Safe-share screen with files that can carry metadata. */
+class PrivacyViewModel : ViewModel() {
+    private val c get() = FileZenApp.c
+
+    private val _files = MutableStateFlow<List<FileEntry>>(emptyList())
+    val files: StateFlow<List<FileEntry>> = _files
+    private val _scanning = MutableStateFlow(true)
+    val scanning: StateFlow<Boolean> = _scanning
+
+    init { refresh() }
+
+    fun refresh() {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            _scanning.value = true
+            _files.value = c.db.fileIndex().allRows()
+                .filter { com.filezen.files.core.privacy.MetadataCleaner.hasAnySupport(it.path) }
+                .sortedByDescending { it.lastModified }
+                .take(300)
+                .map { FileEntry.from(File(it.path)) }
+            _scanning.value = false
+        }
+    }
+}
+
+class HomeViewModel : ViewModel() {
+    private val c get() = FileZenApp.c
+    private val _lastPath = MutableStateFlow<String?>(null)
+    val lastPath: StateFlow<String?> = _lastPath
+    private val _usage = MutableStateFlow<StorageUsage?>(null)
+    val usage: StateFlow<StorageUsage?> = _usage
+    val favorites = c.db.favorites().all()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val untidyCount = c.db.inbox().untidy()
+        .map { it.size }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    val trashSize = c.db.trash().totalSize()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
+    private val _dupWasted = MutableStateFlow(0L)
+    val dupWasted: StateFlow<Long> = _dupWasted
+    private var dupScanned = false
+
+    init {
+        refresh()
+        // Duplicate scan is heavy — run once per VM, off the UI path.
+        viewModelScope.launch(Dispatchers.IO) {
+            _dupWasted.value = runCatching {
+                StorageAnalyzer.duplicates(Environment.getExternalStorageDirectory(), cache = c.db.hashCache())
+                    .sumOf { it.wasted }
+            }.getOrDefault(0L)
+            dupScanned = true
+        }
+    }
+
+    fun refresh() {
+        viewModelScope.launch {
+            _lastPath.value = c.settings.lastBrowsePath.first()
+            _usage.value = StorageAnalyzer.usage()
+        }
     }
 }
 

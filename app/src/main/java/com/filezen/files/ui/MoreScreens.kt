@@ -6,6 +6,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
@@ -633,15 +634,23 @@ fun HistoryScreen(nav: NavController, vm: StorageViewModel = viewModel()) {
 /** Every recent file (up to 500) — the Home "See all" destination. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RecentScreen(nav: NavController, appVm: AppViewModel, vm: HomeViewModel = viewModel()) {
-    val recent by vm.allRecent.collectAsState()
+fun RecentScreen(nav: NavController, appVm: AppViewModel) {
+    val recent by appVm.allRecent.collectAsState()
     var selection by remember { mutableStateOf(setOf<String>()) }
     var trashConfirm by remember { mutableStateOf<List<String>?>(null) }
     var moveTarget by remember { mutableStateOf<List<String>?>(null) }
     val favorites by appVm.favorites.collectAsState()
     val ctx = nav.context
 
-    LaunchedEffect(Unit) { vm.loadAllRecent() }
+    LaunchedEffect(Unit) { appVm.loadAllRecent() }
+
+    // New files land at index 0 — LazyColumn anchors the viewport to the
+    // visible row's key, so prepended items would sit off-screen. Keep the
+    // top in view when the user is already near it.
+    val listState = rememberLazyListState()
+    LaunchedEffect(recent.firstOrNull()?.path) {
+        if (listState.firstVisibleItemIndex <= 1) listState.scrollToItem(0)
+    }
 
     androidx.activity.compose.BackHandler(enabled = selection.isNotEmpty()) { selection = emptySet() }
 
@@ -700,7 +709,7 @@ fun RecentScreen(nav: NavController, appVm: AppViewModel, vm: HomeViewModel = vi
                 "New files from Downloads, Pictures, DCIM and Documents appear here.",
                 Modifier.padding(padding))
         } else {
-            LazyColumn(Modifier.fillMaxSize().padding(padding)) {
+            LazyColumn(Modifier.fillMaxSize().padding(padding), state = listState) {
                 items(recent, key = { it.path }) { e ->
                     FileRow(
                         e = e, selected = e.path in selection,
@@ -728,7 +737,7 @@ fun RecentScreen(nav: NavController, appVm: AppViewModel, vm: HomeViewModel = vi
             "Move to trash",
             onConfirm = {
                 appVm.opTrash(paths)
-                vm.dropRecent(paths)
+                appVm.dropRecent(paths)
                 selection = emptySet()
                 trashConfirm = null
             },
@@ -744,7 +753,7 @@ fun RecentScreen(nav: NavController, appVm: AppViewModel, vm: HomeViewModel = vi
             onPick = { dest ->
                 appVm.opMove(paths, File(dest),
                     com.filezen.files.core.fileops.ConflictPolicy.KEEP_BOTH)
-                vm.dropRecent(paths)
+                appVm.dropRecent(paths)
                 selection = emptySet()
                 moveTarget = null
             },
