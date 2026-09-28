@@ -191,6 +191,24 @@ interface DocIndexDao {
 }
 
 @Dao
+interface ImgIndexDao {
+    @Query("SELECT * FROM img_embeddings")
+    suspend fun all(): List<ImgEmbedding>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun put(e: ImgEmbedding)
+
+    @Query("DELETE FROM img_embeddings WHERE path = :path")
+    suspend fun remove(path: String)
+
+    @Query("SELECT COUNT(*) FROM img_embeddings")
+    fun count(): kotlinx.coroutines.flow.Flow<Int>
+
+    @Query("DELETE FROM img_embeddings")
+    suspend fun clear()
+}
+
+@Dao
 interface SyncPairDao {
     @Query("SELECT * FROM sync_pairs ORDER BY name COLLATE NOCASE")
     fun all(): Flow<List<SyncPair>>

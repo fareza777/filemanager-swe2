@@ -100,6 +100,15 @@ data class DocManifest(
     val sha256: String,
 )
 
+/** One CLIP 512-dim embedding (float16 blob) per image file — photo search. */
+@Entity(tableName = "img_embeddings", primaryKeys = ["path"])
+data class ImgEmbedding(
+    val path: String,
+    val embedding: ByteArray,
+    val size: Long,
+    val lastModified: Long,
+)
+
 /**
  * Folder-sync pair (OpenSync-style): localFolder ↔ remoteFolder. When
  * remoteConnId is null the remote side is just another local folder.

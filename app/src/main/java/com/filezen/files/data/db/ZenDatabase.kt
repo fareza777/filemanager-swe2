@@ -6,8 +6,8 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 
 @Database(
-    entities = [InboxItem::class, Favorite::class, TrashEntry::class, OperationRecord::class, SortRule::class, HashCache::class, FileIndexEntry::class, DocChunk::class, DocManifest::class, SyncPair::class, SyncStateEntry::class, Fingerprint::class, FingerprintEntry::class],
-    version = 8,
+    entities = [InboxItem::class, Favorite::class, TrashEntry::class, OperationRecord::class, SortRule::class, HashCache::class, FileIndexEntry::class, DocChunk::class, DocManifest::class, SyncPair::class, SyncStateEntry::class, Fingerprint::class, FingerprintEntry::class, ImgEmbedding::class],
+    version = 9,
     exportSchema = false,
 )
 abstract class ZenDatabase : RoomDatabase() {
@@ -22,6 +22,7 @@ abstract class ZenDatabase : RoomDatabase() {
     abstract fun syncPairs(): SyncPairDao
     abstract fun syncState(): SyncStateDao
     abstract fun fingerprints(): FingerprintDao
+    abstract fun imgIndex(): ImgIndexDao
 
     companion object {
         private val MIGRATION_2_3 = object : androidx.room.migration.Migration(2, 3) {
@@ -71,10 +72,16 @@ abstract class ZenDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_8_9 = object : androidx.room.migration.Migration(8, 9) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `img_embeddings` (`path` TEXT NOT NULL, `embedding` BLOB NOT NULL, `size` INTEGER NOT NULL, `lastModified` INTEGER NOT NULL, PRIMARY KEY(`path`))")
+            }
+        }
+
         @Volatile private var inst: ZenDatabase? = null
         fun get(ctx: Context): ZenDatabase = inst ?: synchronized(this) {
             inst ?: Room.databaseBuilder(ctx, ZenDatabase::class.java, "filezen.db")
-                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
                 .fallbackToDestructiveMigration()
                 .build().also { inst = it }
         }

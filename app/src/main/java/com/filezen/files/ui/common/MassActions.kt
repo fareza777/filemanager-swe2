@@ -19,6 +19,7 @@ import androidx.compose.material.icons.rounded.Phonelink
 import androidx.compose.material.icons.rounded.PrivacyTip
 import androidx.compose.material.icons.rounded.SelectAll
 import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.rounded.Transform
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -77,10 +78,17 @@ fun MassActionsBar(
     var movePicker by remember { mutableStateOf(false) }
     var copyPicker by remember { mutableStateOf(false) }
     var deleteConfirm by remember { mutableStateOf(false) }
+    var convertPick by remember { mutableStateOf(false) }
     val paths = sel.selected.toList()
     val entries = paths.map { FileEntry.from(File(it)) }
     val filePaths = entries.filter { !it.isDirectory }.map { it.path }
     val allChecked = sel.selected.size == allPaths.size && allPaths.isNotEmpty()
+    // Formats every selected file can convert into — intersection of each
+    // file's targets (empty when nothing is convertible).
+    val convTargets = entries.filter { !it.isDirectory }
+        .map { com.filezen.files.core.convert.ConvertEngine.targetsFor(it).toSet() }
+        .let { sets -> if (sets.isEmpty()) emptySet() else sets.reduce { a, b -> a intersect b } }
+        .toList()
 
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -146,6 +154,8 @@ fun MassActionsBar(
                     appVm.opCleanMetadata(filePaths)
                     sel.clear()
                 }
+                ActionIcon(Icons.Rounded.Transform, "Convert…",
+                    enabled = convTargets.isNotEmpty()) { convertPick = true }
             }
         }
     }
@@ -165,6 +175,16 @@ fun MassActionsBar(
             sel.clear()
         },
         onDismiss = { copyPicker = false },
+    )
+    if (convertPick) ConvertDialog(
+        name = "${filePaths.size} file(s)",
+        targets = convTargets,
+        onConvert = { t ->
+            convertPick = false
+            appVm.opConvertMany(filePaths, t)
+            sel.clear()
+        },
+        onDismiss = { convertPick = false },
     )
     if (deleteConfirm) ConfirmDialog(
         title = "Move ${paths.size} item${if (paths.size > 1) "s" else ""} to trash?",

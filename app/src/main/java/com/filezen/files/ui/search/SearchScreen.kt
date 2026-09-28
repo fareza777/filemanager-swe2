@@ -2,13 +2,18 @@ package com.filezen.files.ui.search
 
 import android.os.Environment
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
@@ -48,6 +53,12 @@ fun SearchScreen(
     val hits by vm.hits.collectAsState()
     val indexProgress by vm.indexProgress.collectAsState()
     val indexedFiles by vm.indexedFiles.collectAsState()
+    val photoHits by vm.photoHits.collectAsState()
+    val imgProgress by vm.imgProgress.collectAsState()
+    val imgIndexed by vm.imgIndexed.collectAsState()
+    val clipReady by vm.clipReady.collectAsState()
+    val clipDl by vm.clipDownload.collectAsState()
+    val clipError by vm.clipError.collectAsState()
 
     var query by remember { mutableStateOf("") }
     var selectedTypes by remember { mutableStateOf(setOf<FileType>()) }
@@ -66,6 +77,7 @@ fun SearchScreen(
 
     LaunchedEffect(presetType, presetMode) {
         if (presetMode == "content") vm.setMode("content")
+        if (presetMode == "photos") vm.setMode("photos")
         presetType?.let { t ->
             runCatching { FileType.valueOf(t) }.getOrNull()?.let { ft ->
                 selectedTypes = setOf(ft)
@@ -77,6 +89,7 @@ fun SearchScreen(
 
     fun runSearch() {
         if (mode == "content") { vm.contentSearch(query); return }
+        if (mode == "photos") { vm.photoSearch(query); return }
         val min = minSizeMb.toLongOrNull()?.times(1024 * 1024)
         vm.setFilter(
             filter.copy(
@@ -88,7 +101,7 @@ fun SearchScreen(
 
     val filesVer by appVm.filesVersion.collectAsState()
     LaunchedEffect(filesVer) {
-        if (filesVer > 0 && (results.isNotEmpty() || hits.isNotEmpty())) runSearch()
+        if (filesVer > 0 && (results.isNotEmpty() || hits.isNotEmpty() || photoHits.isNotEmpty())) runSearch()
     }
 
     Scaffold(
@@ -120,7 +133,11 @@ fun SearchScreen(
                         Icon(Icons.Rounded.Close, "Clear")
                     }
                 },
-                placeholder = { Text(if (mode == "content") "Inside documents…" else "File name…") },
+                placeholder = { Text(when (mode) {
+                    "content" -> "Inside documents…"
+                    "photos" -> "Describe the photo… (e.g. \"meeting photo\")"
+                    else -> "File name…"
+                }) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             )
@@ -131,15 +148,21 @@ fun SearchScreen(
                 SegmentedButton(
                     selected = mode == "name",
                     onClick = { vm.setMode("name"); runSearch() },
-                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 3),
                     icon = { Icon(Icons.Rounded.Abc, null, Modifier.size(18.dp)) },
                 ) { Text("By name") }
                 SegmentedButton(
                     selected = mode == "content",
                     onClick = { vm.setMode("content"); runSearch() },
-                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 3),
                     icon = { Icon(Icons.Rounded.Article, null, Modifier.size(18.dp)) },
                 ) { Text("Inside files") }
+                SegmentedButton(
+                    selected = mode == "photos",
+                    onClick = { vm.setMode("photos"); runSearch() },
+                    shape = SegmentedButtonDefaults.itemShape(index = 2, count = 3),
+                    icon = { Icon(Icons.Rounded.ImageSearch, null, Modifier.size(18.dp)) },
+                ) { Text("Photos") }
             }
 
             if (mode == "content") {
@@ -177,6 +200,73 @@ fun SearchScreen(
                         }
                         if (p == null) {
                             TextButton(onClick = { vm.rebuildIndex() }) { Text("Rebuild") }
+                        }
+                    }
+                }
+            }
+
+            if (mode == "photos") {
+                val dl = clipDl
+                val ip = imgProgress
+                ElevatedCard(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    shape = MaterialTheme.shapes.large,
+                ) {
+                    Row(
+                        Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Icon(Icons.Rounded.ImageSearch, null,
+                            tint = MaterialTheme.colorScheme.primary)
+                        Column(Modifier.weight(1f)) {
+                            when {
+                                !clipReady && dl == null -> {
+                                    Text("On-device AI photo search",
+                                        style = MaterialTheme.typography.labelLarge)
+                                    Text("Download the CLIP model once (~200 MB) — then find photos by describing them, fully offline.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    clipError?.let {
+                                        Text(it, style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.error)
+                                    }
+                                }
+                                dl != null -> {
+                                    Text("Downloading AI model… ${(dl.bytesDone * 100 / dl.bytesTotal).toInt()}%",
+                                        style = MaterialTheme.typography.labelLarge)
+                                    Text("${dl.label} (${dl.fileIx + 1}/${dl.fileCount}) — ${dl.bytesDone / 1048576}/${dl.bytesTotal / 1048576} MB",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                                    LinearProgressIndicator(
+                                        progress = { (dl.bytesDone.toFloat() / dl.bytesTotal).coerceIn(0f, 1f) },
+                                        modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
+                                }
+                                ip != null -> {
+                                    Text("Indexing photos… ${ip.done}/${ip.total}",
+                                        style = MaterialTheme.typography.labelLarge)
+                                    if (ip.current.isNotEmpty())
+                                        Text(ip.current, style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                                    LinearProgressIndicator(
+                                        progress = { if (ip.total > 0) ip.done.toFloat() / ip.total else 0f },
+                                        modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
+                                }
+                                else -> {
+                                    Text("$imgIndexed photos indexed",
+                                        style = MaterialTheme.typography.labelLarge)
+                                    Text("Search from what a photo shows — English & Indonesian both work.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                        when {
+                            !clipReady && dl == null ->
+                                TextButton(onClick = { vm.downloadClip() }) { Text("Download") }
+                            clipReady && ip == null ->
+                                TextButton(onClick = { vm.rebuildPhotoIndex() }) { Text("Rebuild") }
+                            else -> {}
                         }
                     }
                 }
@@ -243,6 +333,71 @@ fun SearchScreen(
 
             Box(Modifier.weight(1f).fillMaxWidth()) {
             when {
+                mode == "photos" -> when {
+                    !clipReady -> EmptyState(Icons.Rounded.ImageSearch, "AI photo search",
+                        "Download the model above first — one-time, then fully offline.")
+                    photoHits.isEmpty() && !searching && query.isNotBlank() ->
+                        EmptyState(Icons.Rounded.SearchOff, "No matching photos",
+                            "Try describing the scene differently — objects, people, places, vibes.")
+                    photoHits.isEmpty() && imgProgress != null ->
+                        EmptyState(Icons.Rounded.ImageSearch, "Indexing photos…",
+                            "First-time photo indexing is running above.")
+                    photoHits.isEmpty() ->
+                        EmptyState(Icons.Rounded.ImageSearch, "Search your photos",
+                            "Try \"meeting photo\", \"cat on a sofa\", \"sunset at the beach\".")
+                    else -> LazyVerticalGrid(
+                        columns = androidx.compose.foundation.lazy.grid.GridCells.Fixed(3),
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        items(photoHits.size) { i ->
+                            val h = photoHits[i]
+                            val isSel = h.path in sel.selected
+                            Box(
+                                Modifier.aspectRatio(1f)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .combinedClickable(
+                                        onClick = {
+                                            if (sel.active) sel.toggle(h.path)
+                                            else nav.navigate(Routes.preview(h.path))
+                                        },
+                                        onLongClick = { sel.toggle(h.path) }),
+                            ) {
+                                coil.compose.AsyncImage(
+                                    model = File(h.path),
+                                    contentDescription = null,
+                                    modifier = Modifier.fillMaxSize()
+                                        .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                )
+                                if (isSel) {
+                                    Box(Modifier.fillMaxSize()
+                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)))
+                                    Icon(Icons.Rounded.CheckCircle, null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.align(Alignment.TopEnd).padding(6.dp))
+                                } else {
+                                    Surface(
+                                        color = androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.45f),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.align(Alignment.BottomStart)
+                                            .padding(6.dp),
+                                    ) {
+                                        Text("${(h.score * 100).toInt()}%",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = androidx.compose.ui.graphics.Color.White,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                                    }
+                                }
+                            }
+                        }
+                        item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(3) }) {
+                            Spacer(Modifier.height(if (sel.active) 150.dp else 96.dp))
+                        }
+                    }
+                }
                 mode == "content" -> when {
                     hits.isEmpty() && !searching && query.isNotBlank() ->
                         EmptyState(Icons.Rounded.SearchOff, "No matching content",
@@ -324,7 +479,7 @@ fun SearchScreen(
             }
             MassActionsBar(
                 appVm, sel,
-                allPaths = results.map { it.path } + hits.map { it.path },
+                allPaths = results.map { it.path } + hits.map { it.path } + photoHits.map { it.path },
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
             }

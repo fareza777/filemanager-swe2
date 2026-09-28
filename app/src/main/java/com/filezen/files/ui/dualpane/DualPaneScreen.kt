@@ -102,6 +102,10 @@ fun DualPaneScreen(nav: NavController, appVm: AppViewModel) {
     val selCount = left.selection.value.size + right.selection.value.size
     val selSrc = if (left.selection.value.isNotEmpty()) left else right
     val selDst = if (selSrc === left) right else left
+    val selFiles = selSrc.selection.value.mapNotNull { p ->
+        File(p).takeIf { it.isFile }?.let { FileEntry.from(it) }
+    }
+    var convertPick by remember { mutableStateOf(false) }
     val wide = LocalConfiguration.current.screenWidthDp >= 600 ||
         LocalConfiguration.current.screenHeightDp < 500
     var deleteConfirm by remember { mutableStateOf(false) }
@@ -147,6 +151,13 @@ fun DualPaneScreen(nav: NavController, appVm: AppViewModel) {
                             }) {
                                 Icon(Icons.Rounded.Share, "Share")
                             }
+                            if (selFiles.isNotEmpty() && selFiles
+                                    .map { com.filezen.files.core.convert.ConvertEngine.targetsFor(it).toSet() }
+                                    .reduce { a, b -> a intersect b }.isNotEmpty()) {
+                                IconButton(onClick = { convertPick = true }) {
+                                    Icon(Icons.Rounded.Transform, "Convert…")
+                                }
+                            }
                             IconButton(onClick = { deleteConfirm = true }) {
                                 Icon(Icons.Rounded.Delete, "Delete",
                                     tint = MaterialTheme.colorScheme.error)
@@ -187,6 +198,22 @@ fun DualPaneScreen(nav: NavController, appVm: AppViewModel) {
                 }
             }
         }
+    }
+
+    if (convertPick) {
+        val targets = selFiles
+            .map { com.filezen.files.core.convert.ConvertEngine.targetsFor(it).toSet() }
+            .reduce { a, b -> a intersect b }.toList()
+        com.filezen.files.ui.common.ConvertDialog(
+            "${selFiles.size} file(s)", targets,
+            onConvert = { t ->
+                convertPick = false
+                appVm.opConvertMany(selFiles.map { it.path }, t)
+                selSrc.selection.value = emptySet()
+                scope.launch { load(left); load(right) }
+            },
+            onDismiss = { convertPick = false },
+        )
     }
 
     if (deleteConfirm) {

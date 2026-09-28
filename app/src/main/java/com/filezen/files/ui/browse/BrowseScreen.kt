@@ -75,6 +75,7 @@ fun BrowseScreen(
     var deleteConfirm by remember { mutableStateOf<List<String>?>(null) }
     var extractTarget by remember { mutableStateOf<FileEntry?>(null) }
     var convertTarget by remember { mutableStateOf<FileEntry?>(null) }
+    var convertSel by remember { mutableStateOf(false) }
     var showDestPicker by remember { mutableStateOf(false) }
     var moveTarget by remember { mutableStateOf<List<String>?>(null) }
     var metadataTarget by remember { mutableStateOf<FileEntry?>(null) }
@@ -204,6 +205,13 @@ fun BrowseScreen(
                             appVm.opCleanMetadata(ps); vm.clearSelection()
                         }) {
                             Icon(Icons.Rounded.PrivacyTip, "Remove metadata")
+                        }
+                        if (entries.filter { it.path in selection && !it.isDirectory }
+                                .map { com.filezen.files.core.convert.ConvertEngine.targetsFor(it).toSet() }
+                                .let { s -> s.isNotEmpty() && s.reduce { a, b -> a intersect b }.isNotEmpty() }) {
+                            IconButton(onClick = { convertSel = true }) {
+                                Icon(Icons.Rounded.Transform, "Convert…")
+                            }
                         }
                         IconButton(onClick = { Intents.share(nav.context, entries.filter { it.path in selection }) }) {
                             Icon(Icons.Rounded.Share, "Share")
@@ -803,6 +811,18 @@ fun BrowseScreen(
         ConvertDialog(e.name, com.filezen.files.core.convert.ConvertEngine.targetsFor(e),
             onConvert = { t -> appVm.opConvert(e.path, t); convertTarget = null },
             onDismiss = { convertTarget = null })
+    }
+    if (convertSel) {
+        val files = entries.filter { it.path in selection && !it.isDirectory }
+        val targets = files
+            .map { com.filezen.files.core.convert.ConvertEngine.targetsFor(it).toSet() }
+            .reduce { a, b -> a intersect b }.toList()
+        ConvertDialog("${files.size} file(s)", targets,
+            onConvert = { t ->
+                appVm.opConvertMany(files.map { it.path }, t)
+                convertSel = false; vm.clearSelection()
+            },
+            onDismiss = { convertSel = false })
     }
     extractTarget?.let { e ->
         ConfirmDialog(

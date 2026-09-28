@@ -873,13 +873,25 @@ class SearchViewModel : ViewModel() {
     val searching: StateFlow<Boolean> = _searching
 
     // Content (semantic inside-files) mode
-    private val _mode = MutableStateFlow("name") // name | content
+    private val _mode = MutableStateFlow("name") // name | content | photos
     val mode: StateFlow<String> = _mode
     private val _hits = MutableStateFlow<List<com.filezen.files.core.semsearch.ContentIndex.Hit>>(emptyList())
     val hits: StateFlow<List<com.filezen.files.core.semsearch.ContentIndex.Hit>> = _hits
     val indexProgress = c.contentIndex.progress
     val indexedFiles = c.contentIndex.indexedFiles
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    // Photos (CLIP semantic image search) mode
+    private val _photoHits = MutableStateFlow<List<com.filezen.files.core.clip.ImageIndex.Hit>>(emptyList())
+    val photoHits: StateFlow<List<com.filezen.files.core.clip.ImageIndex.Hit>> = _photoHits
+    val imgProgress = c.imageIndex.progress
+    val imgIndexed = c.imageIndex.indexedCount
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+    val clipDownload = c.clip.downloadProgress
+    private val _clipReady = MutableStateFlow(c.clip.isReady)
+    val clipReady: StateFlow<Boolean> = _clipReady
+    private val _clipError = MutableStateFlow<String?>(null)
+    val clipError: StateFlow<String?> = _clipError
 
     val recentQueries = c.settings.recentQueries
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -896,7 +908,12 @@ class SearchViewModel : ViewModel() {
             merge(c.ops.filesVersion, c.fileIndex.version).drop(2).collect {
                 pruneGone()
                 if (_results.value.isNotEmpty() && lastRoots.isNotEmpty()) search(lastRoots)
-                if (_hits.value.isNotEmpty() && lastContentQuery.isNotBlank()) contentSearch(lastContentQuery)
+                if (_mode.value == "photos") {
+                    c.imageIndex.sync()
+                    if (lastContentQuery.isNotBlank()) c.imageIndex.search(lastContentQuery)
+                        .let { _photoHits.value = it }
+                } else if (_hits.value.isNotEmpty() && lastContentQuery.isNotBlank())
+                    contentSearch(lastContentQuery)
             }
         }
     }
@@ -904,6 +921,7 @@ class SearchViewModel : ViewModel() {
     private fun pruneGone() {
         _results.value = _results.value.filter { File(it.path).exists() }
         _hits.value = _hits.value.filter { File(it.path).exists() }
+        _photoHits.value = _photoHits.value.filter { File(it.path).exists() }
     }
 
     fun setFilter(f: SearchFilter) { _filter.value = f }
@@ -914,9 +932,40 @@ class SearchViewModel : ViewModel() {
             // Kick an incremental index refresh if nothing is indexed yet.
             viewModelScope.launch { c.contentIndex.sync() }
         }
+        if (m == "photos") {
+            _clipReady.value = c.clip.isReady
+            if (c.clip.isReady) viewModelScope.launch { c.imageIndex.sync() }
+        }
     }
 
     fun rebuildIndex() { viewModelScope.launch { c.contentIndex.rebuildAll() } }
+
+    fun rebuildPhotoIndex() { viewModelScope.launch { c.imageIndex.rebuildAll() } }
+
+    fun downloadClip() {
+        if (c.clip.isReady) { _clipReady.value = true; return }
+        _clipError.value = null
+        viewModelScope.launch {
+            try {
+                c.clip.download()
+                _clipReady.value = c.clip.isReady
+                if (_clipReady.value) c.imageIndex.sync()
+            } catch (t: Throwable) {
+                _clipError.value = t.message ?: "Download failed"
+            }
+        }
+    }
+
+    fun photoSearch(q: String) {
+        cJob?.cancel()
+        if (q.isBlank()) { _photoHits.value = emptyList(); return }
+        lastContentQuery = q.trim()
+        _searching.value = true
+        cJob = viewModelScope.launch {
+            try { _photoHits.value = c.imageIndex.search(q.trim()) }
+            finally { _searching.value = false }
+        }
+    }
 
     fun contentSearch(q: String) {
         cJob?.cancel()

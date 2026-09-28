@@ -41,6 +41,7 @@ import com.filezen.files.ui.HomeViewModel
 import com.filezen.files.ui.common.SectionHeader
 import com.filezen.files.ui.common.ThumbBox
 import java.io.File
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -54,6 +55,11 @@ fun HomeScreen(nav: NavController, appVm: AppViewModel,
     val trashSize by vm.trashSize.collectAsState()
     val dupWasted by vm.dupWasted.collectAsState()
     val adFree by appVm.adFree.collectAsState()
+    val qaPref by com.filezen.files.FileZenApp.c.settings.quickActions
+        .collectAsState(initial = null)
+    var qaEdit by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val qaShown = QaCatalog.resolve(qaPref)
 
     LaunchedEffect(Unit) { vm.refresh(); appVm.refreshRecent() }
 
@@ -137,14 +143,7 @@ fun HomeScreen(nav: NavController, appVm: AppViewModel,
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                data class QA(val icon: androidx.compose.ui.graphics.vector.ImageVector,
-                              val label: String, val route: String)
-                listOf(
-                    QA(Icons.Rounded.Splitscreen, "Dual pane", Routes.DUALPANE),
-                    QA(Icons.Rounded.Cloud, "Remote", Routes.CONNECTIONS),
-                    QA(Icons.Rounded.Phonelink, "To PC", Routes.TRANSFER),
-                    QA(Icons.Rounded.Build, "Tools", Routes.TOOLS),
-                ).forEach { qa ->
+                qaShown.forEach { qa ->
                     Card(
                         Modifier.weight(1f).clickable { nav.navigate(qa.route) },
                         shape = RoundedCornerShape(18.dp),
@@ -168,8 +167,39 @@ fun HomeScreen(nav: NavController, appVm: AppViewModel,
                             }
                             Spacer(Modifier.height(7.dp))
                             Text(qa.label, style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                fontWeight = FontWeight.SemiBold, maxLines = 1,
+                                overflow = TextOverflow.Ellipsis)
                         }
+                    }
+                }
+                // Edit tile — pick which tools sit here
+                Card(
+                    Modifier.weight(1f).clickable { qaEdit = true },
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color.Transparent),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp, MaterialTheme.colorScheme.outlineVariant),
+                ) {
+                    Column(
+                        Modifier.fillMaxWidth().padding(vertical = 13.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(11.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            modifier = Modifier.size(36.dp),
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Rounded.Edit, null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(19.dp))
+                            }
+                        }
+                        Spacer(Modifier.height(7.dp))
+                        Text("Edit", style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -237,7 +267,15 @@ fun HomeScreen(nav: NavController, appVm: AppViewModel,
             AnimatedVisibility(entered, enter = enterIn(240)) {
             Column {
             SectionHeader("Recent") {
-                TextButton(onClick = { nav.navigate(Routes.RECENT) }) { Text("See all") }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { appVm.refreshRecent() },
+                        modifier = Modifier.size(30.dp)) {
+                        Icon(Icons.Rounded.Refresh, "Refresh recent files",
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.primary)
+                    }
+                    TextButton(onClick = { nav.navigate(Routes.RECENT) }) { Text("See all") }
+                }
             }
             if (recent.isEmpty()) {
                 Text("No recent files", modifier = Modifier.padding(horizontal = 16.dp),
@@ -364,6 +402,73 @@ fun HomeScreen(nav: NavController, appVm: AppViewModel,
             if (!adFree) ZenBanner(Modifier.padding(horizontal = 16.dp))
             Spacer(Modifier.height(24.dp))
         }
+    }
+
+    if (qaEdit) {
+        var picked by remember(qaEdit) {
+            mutableStateOf(qaShown.map { it.id }.toSet())
+        }
+        AlertDialog(
+            onDismissRequest = { qaEdit = false },
+            title = { Text("Quick access cards", fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text("Pick up to ${QaCatalog.MAX} tools to pin on Home.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(8.dp))
+                    androidx.compose.foundation.lazy.LazyColumn(
+                        Modifier.height(340.dp)) {
+                        items(QaCatalog.all.size) { i ->
+                            val qa = QaCatalog.all[i]
+                            val on = qa.id in picked
+                            Row(
+                                Modifier.fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable(enabled = on || picked.size < QaCatalog.MAX) {
+                                        picked = if (on) picked - qa.id else picked + qa.id
+                                    }
+                                    .padding(vertical = 4.dp, horizontal = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Checkbox(checked = on,
+                                    onCheckedChange = {
+                                        picked = if (on) picked - qa.id
+                                        else if (picked.size < QaCatalog.MAX) picked + qa.id
+                                        else picked
+                                    })
+                                Icon(qa.icon, null, Modifier.size(20.dp),
+                                    tint = MaterialTheme.colorScheme.primary)
+                                Spacer(Modifier.width(10.dp))
+                                Text(qa.label, style = MaterialTheme.typography.bodyMedium)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    enabled = picked.isNotEmpty(),
+                    onClick = {
+                        qaEdit = false
+                        scope.launch {
+                            com.filezen.files.FileZenApp.c.settings
+                                .setQuickActions(QaCatalog.all.filter { it.id in picked }
+                                    .map { it.id })
+                        }
+                    },
+                ) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    qaEdit = false
+                    scope.launch {
+                        com.filezen.files.FileZenApp.c.settings
+                            .setQuickActions(QaCatalog.DEFAULT_IDS)
+                    }
+                }) { Text("Reset") }
+            },
+        )
     }
 }
 
@@ -502,5 +607,61 @@ private fun StorageRingCard(u: StorageUsage, onClick: () -> Unit) {
             Icon(Icons.Rounded.ChevronRight, null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+    }
+}
+
+/** One pinnable quick-access entry on the Home cards row. */
+data class QaItem(
+    val id: String,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val label: String,
+    val route: String,
+)
+
+/** Catalog of tools the user can pin to the Home quick-access row. */
+object QaCatalog {
+    const val MAX = 4
+    val DEFAULT_IDS = listOf("dualpane", "remote", "transfer", "tools")
+
+    val all = listOf(
+        QaItem("inbox", Icons.Rounded.Inbox, "Inbox", Routes.INBOX),
+        QaItem("recent", Icons.Rounded.Schedule, "Recent", Routes.RECENT),
+        QaItem("dualpane", Icons.Rounded.Splitscreen, "Dual pane", Routes.DUALPANE),
+        QaItem("remote", Icons.Rounded.Cloud, "Remote", Routes.CONNECTIONS),
+        QaItem("transfer", Icons.Rounded.Phonelink, "To PC", Routes.TRANSFER),
+        QaItem("sync", Icons.Rounded.Sync, "Folder sync", Routes.SYNCPAIRS),
+        QaItem("photos", Icons.Rounded.ImageSearch, "Photo search",
+            Routes.SEARCH + "?mode=photos"),
+        QaItem("find", Icons.Rounded.Article, "Find in files",
+            Routes.SEARCH + "?mode=content"),
+        QaItem("optimise", Icons.Rounded.AutoAwesome, "Optimise", Routes.OPTIMISE),
+        QaItem("photoclean", Icons.Rounded.PhotoLibrary, "Photo clean",
+            Routes.PHOTOCLEAN),
+        QaItem("backup", Icons.Rounded.Apps, "App backup", Routes.APPBACKUP),
+        QaItem("appdata", Icons.Rounded.Storage, "Apps data", Routes.APPDATA),
+        QaItem("archive", Icons.Rounded.FolderZip, "Zstd pack", Routes.ZSTD),
+        QaItem("shield", Icons.Rounded.Shield, "Shield", Routes.SHIELD),
+        QaItem("timemachine", Icons.Rounded.Restore, "Time machine",
+            Routes.TIMEMACHINE),
+        QaItem("similar", Icons.Rounded.CopyAll, "Similar files", Routes.SIMILAR),
+        QaItem("typecheck", Icons.Rounded.FactCheck, "Type check", Routes.TYPECHECK),
+        QaItem("drivecheck", Icons.Rounded.SdCard, "Drive check", Routes.DRIVECHECK),
+        QaItem("metaclean", Icons.Rounded.PrivacyTip, "Safe share", Routes.METACLEAN),
+        QaItem("compare", Icons.Rounded.CompareArrows, "Compare", Routes.COMPARE),
+        QaItem("fingerprint", Icons.Rounded.Fingerprint, "Fingerprint",
+            Routes.FINGERPRINT),
+        QaItem("delta", Icons.Rounded.Difference, "Delta", Routes.DELTA),
+        QaItem("power", Icons.Rounded.Terminal, "Power access", Routes.POWER),
+        QaItem("rules", Icons.Rounded.AutoFixHigh, "Auto-sort", Routes.RULES),
+        QaItem("trash", Icons.Rounded.Delete, "Trash", Routes.TRASH),
+        QaItem("history", Icons.Rounded.History, "History", Routes.HISTORY),
+        QaItem("calendar", Icons.Rounded.CalendarMonth, "Calendar", Routes.CALENDAR),
+        QaItem("tools", Icons.Rounded.Build, "All tools", Routes.TOOLS),
+    )
+
+    /** Picked ids (or null/blank for defaults) -> display items, catalog order. */
+    fun resolve(ids: List<String>?): List<QaItem> {
+        val wanted = if (ids.isNullOrEmpty()) DEFAULT_IDS else ids
+        return all.filter { it.id in wanted }.take(MAX)
     }
 }

@@ -639,6 +639,7 @@ fun RecentScreen(nav: NavController, appVm: AppViewModel) {
     var selection by remember { mutableStateOf(setOf<String>()) }
     var trashConfirm by remember { mutableStateOf<List<String>?>(null) }
     var moveTarget by remember { mutableStateOf<List<String>?>(null) }
+    var convertPick by remember { mutableStateOf(false) }
     val favorites by appVm.favorites.collectAsState()
     val ctx = nav.context
 
@@ -684,6 +685,13 @@ fun RecentScreen(nav: NavController, appVm: AppViewModel) {
                                 com.filezen.files.core.fileops.ConflictPolicy.KEEP_BOTH)
                             selection = emptySet()
                         }) { Icon(Icons.Rounded.Phonelink, "Send to Transfer folder") }
+                        if (recent.filter { it.path in selection && !it.isDirectory }
+                                .map { com.filezen.files.core.convert.ConvertEngine.targetsFor(it).toSet() }
+                                .let { s -> s.isNotEmpty() && s.reduce { a, b -> a intersect b }.isNotEmpty() }) {
+                            IconButton(onClick = { convertPick = true }) {
+                                Icon(Icons.Rounded.Transform, "Convert…")
+                            }
+                        }
                         IconButton(onClick = { trashConfirm = selection.toList() }) {
                             Icon(Icons.Rounded.Delete, "Trash")
                         }
@@ -698,6 +706,11 @@ fun RecentScreen(nav: NavController, appVm: AppViewModel) {
                     navigationIcon = {
                         IconButton(onClick = { nav.popBackStack() }) {
                             Icon(Icons.Rounded.ArrowBack, "Back")
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = { appVm.loadAllRecent() }) {
+                            Icon(Icons.Rounded.Refresh, "Refresh")
                         }
                     },
                 )
@@ -742,6 +755,22 @@ fun RecentScreen(nav: NavController, appVm: AppViewModel) {
                 trashConfirm = null
             },
             onDismiss = { trashConfirm = null },
+        )
+    }
+
+    if (convertPick) {
+        val files = recent.filter { it.path in selection && !it.isDirectory }
+        val targets = files
+            .map { com.filezen.files.core.convert.ConvertEngine.targetsFor(it).toSet() }
+            .let { s -> if (s.isEmpty()) emptySet() else s.reduce { a, b -> a intersect b } }
+            .toList()
+        ConvertDialog(
+            "${files.size} file(s)", targets,
+            onConvert = { t ->
+                appVm.opConvertMany(files.map { it.path }, t)
+                selection = emptySet(); convertPick = false
+            },
+            onDismiss = { convertPick = false },
         )
     }
 

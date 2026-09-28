@@ -36,6 +36,7 @@ class SettingsStore(private val ctx: Context) {
         val ONBOARDED = booleanPreferencesKey("onboarded")
         val RECENT_QUERY = stringPreferencesKey("recent_queries")
         val REMOTE_CONNS = stringPreferencesKey("remote_connections")
+        val QUICK_ACTIONS = stringPreferencesKey("quick_actions")
         val SCROLL_PREFIX = "scroll_" // + sanitized path -> "index,offset"
     }
 
@@ -69,6 +70,10 @@ class SettingsStore(private val ctx: Context) {
         }.toMap()
     }
     val autoSort: Flow<Boolean> = ctx.zenPrefs.data.map { it[K.AUTO_SORT] ?: false }
+    /** Comma-separated catalog ids for the Home quick-access cards. */
+    val quickActions: Flow<List<String>> = ctx.zenPrefs.data.map {
+        (it[K.QUICK_ACTIONS] ?: "").split(",").filter { s -> s.isNotBlank() }
+    }
     val recentQueries: Flow<List<String>> = ctx.zenPrefs.data.map {
         (it[K.RECENT_QUERY] ?: "").split("\n").filter { s -> s.isNotBlank() }.take(10)
     }
@@ -96,6 +101,9 @@ class SettingsStore(private val ctx: Context) {
     }
     suspend fun setShowHidden(v: Boolean) = ctx.zenPrefs.edit { it[K.SHOW_HIDDEN] = v }
     suspend fun setAutoSort(v: Boolean) = ctx.zenPrefs.edit { it[K.AUTO_SORT] = v }
+    suspend fun setQuickActions(v: List<String>) = ctx.zenPrefs.edit {
+        it[K.QUICK_ACTIONS] = v.joinToString(",")
+    }
 
     suspend fun addRecentQuery(q: String) {
         ctx.zenPrefs.edit {

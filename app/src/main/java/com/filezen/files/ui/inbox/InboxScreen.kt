@@ -42,6 +42,7 @@ fun InboxScreen(nav: NavController, appVm: AppViewModel, vm: InboxViewModel = vi
     var tidyBrowse by remember { mutableStateOf(false) }
     var trashConfirm by remember { mutableStateOf<List<String>?>(null) }
     var autoFor by remember { mutableStateOf<List<String>?>(null) }
+    var convertPick by remember { mutableStateOf(false) }
 
     // Files can arrive while the user sits on another screen — the VM survives
     // navigation, so rescan every time this page becomes visible again.
@@ -75,6 +76,14 @@ fun InboxScreen(nav: NavController, appVm: AppViewModel, vm: InboxViewModel = vi
                         }
                         IconButton(onClick = { vm.markTidy(selection.toList(), true) }) {
                             Icon(Icons.Rounded.DoneAll, "Mark tidy")
+                        }
+                        if (shown.filter { it.path in selection }
+                                .map { com.filezen.files.core.model.FileEntry.from(File(it.path)) }
+                                .map { com.filezen.files.core.convert.ConvertEngine.targetsFor(it).toSet() }
+                                .let { s -> s.isNotEmpty() && s.reduce { a, b -> a intersect b }.isNotEmpty() }) {
+                            IconButton(onClick = { convertPick = true }) {
+                                Icon(Icons.Rounded.Transform, "Convert…")
+                            }
                         }
                         IconButton(onClick = { trashConfirm = selection.toList() }) {
                             Icon(Icons.Rounded.Delete, "Trash")
@@ -296,6 +305,22 @@ fun InboxScreen(nav: NavController, appVm: AppViewModel, vm: InboxViewModel = vi
             onDismiss = { addRootPath = false },
         )
     }
+    if (convertPick) {
+        val files = shown.filter { it.path in selection }
+            .map { com.filezen.files.core.model.FileEntry.from(File(it.path)) }
+        val targets = files
+            .map { com.filezen.files.core.convert.ConvertEngine.targetsFor(it).toSet() }
+            .reduce { a, b -> a intersect b }.toList()
+        com.filezen.files.ui.common.ConvertDialog(
+            "${files.size} file(s)", targets,
+            onConvert = { t ->
+                appVm.opConvertMany(files.map { it.path }, t)
+                convertPick = false; vm.clearSelection()
+            },
+            onDismiss = { convertPick = false },
+        )
+    }
+
     trashConfirm?.let { paths ->
         ConfirmDialog(
             "Move to trash?", "${paths.size} item(s) will be moved to trash.",

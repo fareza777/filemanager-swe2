@@ -16,3 +16,6 @@
 -dontwarn com.tom_roush.pdfbox.**
 -dontwarn org.bouncycastle.**
 -dontwarn com.google.common.**
+# ONNX Runtime (native JNI bindings must not be renamed/stripped)
+-keep class ai.onnxruntime.** { *; }
+-dontwarn ai.onnxruntime.**

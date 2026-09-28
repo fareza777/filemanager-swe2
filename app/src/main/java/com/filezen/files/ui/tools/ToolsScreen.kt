@@ -31,6 +31,7 @@ fun ToolsScreen(nav: NavController) {
     val groups = listOf(
         "Find" to listOf(
             Tool(Icons.Rounded.ManageSearch, "Inside-file search", "Semantic search across document contents", Routes.SEARCH + "?mode=content"),
+            Tool(Icons.Rounded.ImageSearch, "AI photo search", "Find photos by describing them — \"meeting photo\", \"cat\"… (on-device AI)", Routes.SEARCH + "?mode=photos"),
             Tool(Icons.Rounded.Search, "Search by name", "Instant file search across all storage", Routes.SEARCH),
             Tool(Icons.Rounded.FactCheck, "True type check", "Real file type from magic bytes — catch disguised files", Routes.TYPECHECK),
             Tool(Icons.Rounded.Fingerprint, "Similar files", "TLSH fuzzy DNA + imohash fast duplicate pre-scan", Routes.SIMILAR),

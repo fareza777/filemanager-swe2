@@ -21,6 +21,8 @@ class AppContainer(app: FileZenApp) {
     val fileIndex by lazy { com.filezen.files.core.scan.FileIndex(db) }
     val transfer by lazy { com.filezen.files.core.transfer.TransferServer() }
     val contentIndex by lazy { com.filezen.files.core.semsearch.ContentIndex(app, db) }
+    val clip by lazy { com.filezen.files.core.clip.ClipEngine(app) }
+    val imageIndex by lazy { com.filezen.files.core.clip.ImageIndex(db, clip) }
     val syncRunner by lazy { com.filezen.files.core.sync.SyncRunner(app, db, settings) }
     val shizuku by lazy { com.filezen.files.core.shizuku.ShizukuAccess(app) }
 }
@@ -46,6 +48,8 @@ class FileZenApp : Application() {
             runCatching { container.fileIndex.rebuild() }
             // Then refresh the document-content index (incremental — cheap once built).
             runCatching { container.contentIndex.sync() }
+            // Photo embeddings too — only when the CLIP model is downloaded.
+            runCatching { container.imageIndex.sync() }
             // Folder pairs flagged "sync on open".
             runCatching { container.syncRunner.runOnOpenPairs() }
         }
