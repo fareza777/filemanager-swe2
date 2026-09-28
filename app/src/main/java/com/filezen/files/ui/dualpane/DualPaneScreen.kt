@@ -104,6 +104,8 @@ fun DualPaneScreen(nav: NavController, appVm: AppViewModel) {
     val selDst = if (selSrc === left) right else left
     val wide = LocalConfiguration.current.screenWidthDp >= 600 ||
         LocalConfiguration.current.screenHeightDp < 500
+    var deleteConfirm by remember { mutableStateOf(false) }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
 
     Scaffold(
         topBar = {
@@ -135,6 +137,19 @@ fun DualPaneScreen(nav: NavController, appVm: AppViewModel) {
                                 Icon(Icons.Rounded.DriveFileMove, null, Modifier.size(16.dp))
                                 Spacer(Modifier.width(6.dp))
                                 Text("Move here")
+                            }
+                            IconButton(onClick = {
+                                val sel = selSrc.selection.value
+                                com.filezen.files.ops.Intents.share(ctx,
+                                    sel.mapNotNull { p ->
+                                        File(p).takeIf { it.isFile }?.let { FileEntry.from(it) }
+                                    })
+                            }) {
+                                Icon(Icons.Rounded.Share, "Share")
+                            }
+                            IconButton(onClick = { deleteConfirm = true }) {
+                                Icon(Icons.Rounded.Delete, "Delete",
+                                    tint = MaterialTheme.colorScheme.error)
                             }
                         }
                     }
@@ -172,6 +187,23 @@ fun DualPaneScreen(nav: NavController, appVm: AppViewModel) {
                 }
             }
         }
+    }
+
+    if (deleteConfirm) {
+        com.filezen.files.ui.common.ConfirmDialog(
+            title = "Move $selCount item${if (selCount > 1) "s" else ""} to trash?",
+            text = "You can restore them from Trash.",
+            confirmLabel = "Move to trash",
+            danger = true,
+            onConfirm = {
+                deleteConfirm = false
+                val src = selSrc
+                appVm.opTrash(src.selection.value.toList())
+                src.selection.value = emptySet()
+                scope.launch { load(left); load(right) }
+            },
+            onDismiss = { deleteConfirm = false },
+        )
     }
 
     pickFor?.let { p ->

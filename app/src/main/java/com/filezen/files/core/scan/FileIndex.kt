@@ -48,6 +48,7 @@ class FileIndex(private val db: ZenDatabase) {
     private val watchedPaths = HashSet<String>()
     private var watchJob: Job? = null
     @Volatile private var fire: (() -> Unit)? = null
+    @Volatile private var watcherScope: CoroutineScope? = null
     private var watchRoots: List<File> = emptyList()
 
     /** Roots live-watched so Recent/search stay current between rebuilds. */
@@ -176,6 +177,7 @@ class FileIndex(private val db: ZenDatabase) {
         val job = SupervisorJob(scope.coroutineContext[Job])
         watchJob = job
         val ws = CoroutineScope(scope.coroutineContext + Dispatchers.Default + job)
+        watcherScope = ws
         var pending: Job? = null
         val f = {
             synchronized(this) {
@@ -192,10 +194,38 @@ class FileIndex(private val db: ZenDatabase) {
 
     fun stopWatching() {
         fire = null
+        watcherScope = null
         observers.forEach { it.stopWatching() }
         observers.clear()
         watchedPaths.clear()
         watchJob?.cancel(); watchJob = null
+    }
+
+    /**
+     * Per-event index write so Recent/search update the instant a file is
+     * created, written, renamed or deleted — without waiting for the
+     * debounced delta pass. Directories and missed events are reconciled
+     * by the background [refresh].
+     */
+    private fun onPathChanged(dirPath: String, event: Int, name: String) {
+        val ws = watcherScope ?: return
+        val abs = File(dirPath, name).absolutePath
+        val removing =
+            event and (FileObserver.DELETE or FileObserver.MOVED_FROM) != 0
+        ws.launch(Dispatchers.IO) {
+            val f = File(abs)
+            if (removing && !f.exists()) {
+                db.fileIndex().removeAll(listOf(abs))
+                _version.value += 1
+            } else if (f.isFile && !f.isHidden) {
+                val e = FileEntry.from(f)
+                db.fileIndex().upsertAll(listOf(FileIndexEntry(
+                    path = abs, name = f.name, size = e.size,
+                    lastModified = f.lastModified(), type = e.type.name,
+                    parentDir = dirPath)))
+                _version.value += 1
+            }
+        }
     }
 
     private fun collectDirs(roots: List<File>, cap: Int = 900): List<File> {
@@ -222,7 +252,10 @@ class FileIndex(private val db: ZenDatabase) {
                 FileObserver.DELETE or FileObserver.MOVED_FROM or
                 FileObserver.MOVE_SELF or FileObserver.CLOSE_WRITE or
                 FileObserver.ATTRIB) {
-                override fun onEvent(event: Int, path: String?) { f() }
+                override fun onEvent(event: Int, path: String?) {
+                    f()
+                    if (path != null) onPathChanged(p, event, path)
+                }
             }
             o.startWatching()
             observers += o

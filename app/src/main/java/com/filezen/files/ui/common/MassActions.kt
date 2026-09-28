@@ -45,8 +45,9 @@ import java.io.File
 /**
  * Shared mass-selection state + bottom action bar used by every file list in
  * the app. Long-press (or tap while a selection is active) selects rows; the
- * bar offers Share / Move / Copy / Send to Transfer / Zip / Clean metadata /
- * Delete on all selected paths at once.
+ * bar offers Share / Move / Copy / Send to Transfer / Zip / Clean metadata on
+ * all selected paths at once. Delete lives in the header row so it is always
+ * visible — the icon row scrolls on narrow screens.
  */
 class SelectionState {
     var selected by mutableStateOf(setOf<String>())
@@ -108,6 +109,9 @@ fun MassActionsBar(
                     )
                     Text(if (allChecked) "None" else "All")
                 }
+                IconButton(onClick = { deleteConfirm = true }) {
+                    Icon(Icons.Rounded.Delete, "Delete", tint = MaterialTheme.colorScheme.error)
+                }
                 IconButton(onClick = { sel.clear() }) {
                     Icon(Icons.Rounded.Close, "Close", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -142,8 +146,6 @@ fun MassActionsBar(
                     appVm.opCleanMetadata(filePaths)
                     sel.clear()
                 }
-                ActionIcon(Icons.Rounded.Delete, "Delete",
-                    tint = MaterialTheme.colorScheme.error) { deleteConfirm = true }
             }
         }
     }
