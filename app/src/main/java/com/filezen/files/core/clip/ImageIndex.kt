@@ -60,6 +60,8 @@ class ImageIndex(private val db: ZenDatabase, private val clip: ClipEngine) {
             } finally {
                 running.set(false)
                 _progress.value = null
+                // A kick landing during teardown would otherwise be lost.
+                if (queued.get()) kick()
             }
         }
     }
