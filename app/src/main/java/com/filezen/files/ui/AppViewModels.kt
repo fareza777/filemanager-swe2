@@ -909,7 +909,7 @@ class SearchViewModel : ViewModel() {
                 pruneGone()
                 if (_results.value.isNotEmpty() && lastRoots.isNotEmpty()) search(lastRoots)
                 if (_mode.value == "photos") {
-                    c.imageIndex.sync()
+                    c.imageIndex.kick()
                     if (lastContentQuery.isNotBlank()) c.imageIndex.search(lastContentQuery)
                         .let { _photoHits.value = it }
                 } else if (_hits.value.isNotEmpty() && lastContentQuery.isNotBlank())
@@ -934,13 +934,13 @@ class SearchViewModel : ViewModel() {
         }
         if (m == "photos") {
             _clipReady.value = c.clip.isReady
-            if (c.clip.isReady) viewModelScope.launch { c.imageIndex.sync() }
+            if (c.clip.isReady) c.imageIndex.kick()
         }
     }
 
     fun rebuildIndex() { viewModelScope.launch { c.contentIndex.rebuildAll() } }
 
-    fun rebuildPhotoIndex() { viewModelScope.launch { c.imageIndex.rebuildAll() } }
+    fun rebuildPhotoIndex() { c.imageIndex.rebuildAll() }
 
     fun downloadClip() {
         if (c.clip.isReady) { _clipReady.value = true; return }
@@ -949,7 +949,7 @@ class SearchViewModel : ViewModel() {
             try {
                 c.clip.download()
                 _clipReady.value = c.clip.isReady
-                if (_clipReady.value) c.imageIndex.sync()
+                if (_clipReady.value) c.imageIndex.kick()
             } catch (t: Throwable) {
                 _clipError.value = t.message ?: "Download failed"
             }

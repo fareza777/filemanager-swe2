@@ -201,7 +201,7 @@ interface ImgIndexDao {
     @Query("DELETE FROM img_embeddings WHERE path = :path")
     suspend fun remove(path: String)
 
-    @Query("SELECT COUNT(*) FROM img_embeddings")
+    @Query("SELECT COUNT(*) FROM img_embeddings WHERE length(embedding) > 0")
     fun count(): kotlinx.coroutines.flow.Flow<Int>
 
     @Query("DELETE FROM img_embeddings")

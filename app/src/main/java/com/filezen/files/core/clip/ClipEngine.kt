@@ -3,6 +3,8 @@ package com.filezen.files.core.clip
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import androidx.exifinterface.media.ExifInterface
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
@@ -179,8 +181,25 @@ class ClipEngine(private val app: Context) {
         var sample = 1
         while (bounds.outWidth / (sample * 2) >= 640 || bounds.outHeight / (sample * 2) >= 640)
             sample *= 2
-        return BitmapFactory.decodeFile(src.absolutePath,
-            BitmapFactory.Options().apply { inSampleSize = sample })
+        val bmp = BitmapFactory.decodeFile(src.absolutePath,
+            BitmapFactory.Options().apply { inSampleSize = sample }) ?: return null
+        // Photos store rotation in EXIF — BitmapFactory ignores it, and CLIP is
+        // not rotation-invariant, so apply the orientation before embedding.
+        val rot = runCatching {
+            ExifInterface(src.absolutePath).getAttributeInt(
+                ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
+        }.getOrDefault(ExifInterface.ORIENTATION_NORMAL)
+        val deg = when (rot) {
+            ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+            ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+            ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+            else -> 0f
+        }
+        if (deg == 0f) return bmp
+        val out = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height,
+            Matrix().apply { postRotate(deg) }, true)
+        if (out != bmp) bmp.recycle()
+        return out
     }
 
     private fun preprocess(bmp: Bitmap): FloatArray {
