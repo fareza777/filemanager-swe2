@@ -171,7 +171,7 @@ class FileIndex(private val db: ZenDatabase) {
      * Recursively watch [roots] (breadth-first, capped) and run a debounced
      * delta refresh on any file event. Mirrors the inbox watcher.
      */
-    fun startWatching(scope: CoroutineScope, roots: List<File>, debounceMs: Long = 1200) {
+    fun startWatching(scope: CoroutineScope, roots: List<File>, debounceMs: Long = 500) {
         stopWatching()
         watchRoots = roots.filter { it.exists() }
         val job = SupervisorJob(scope.coroutineContext[Job])

@@ -330,11 +330,16 @@ class HomeViewModel : ViewModel() {
 
     fun loadAllRecent() {
         viewModelScope.launch {
-            // Delta-scan first so the Recent page reflects files that arrived
-            // since the last index build — the pass dedups itself cheaply.
-            c.fileIndex.refresh(c.fileIndex.hotRoots())
+            // Read the index first so the page paints instantly; the delta
+            // pass then repopulates in the background for anything missed.
             _allRecent.value = withContext(Dispatchers.IO) {
                 recentViaIndex(2000) ?: Scanner.recent(recentRoots(), limit = 500)
+            }
+            launch {
+                c.fileIndex.refresh(c.fileIndex.hotRoots())
+                _allRecent.value = withContext(Dispatchers.IO) {
+                    recentViaIndex(2000) ?: Scanner.recent(recentRoots(), limit = 500)
+                }
             }
         }
     }

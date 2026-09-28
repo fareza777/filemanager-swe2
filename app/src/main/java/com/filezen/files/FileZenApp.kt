@@ -39,10 +39,11 @@ class FileZenApp : Application() {
         kotlinx.coroutines.CoroutineScope(
             kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO
         ).launch {
-            runCatching { container.fileIndex.rebuild() }
-            // Keep the index live: watch the hot roots so new files hit
-            // Recent/search within seconds, not next launch.
+            // Watch the hot roots BEFORE the full rebuild — rebuild can take
+            // minutes on a big disk, and files created meanwhile would
+            // otherwise go unwatched.
             container.fileIndex.startWatching(this, container.fileIndex.hotRoots())
+            runCatching { container.fileIndex.rebuild() }
             // Then refresh the document-content index (incremental — cheap once built).
             runCatching { container.contentIndex.sync() }
             // Folder pairs flagged "sync on open".
