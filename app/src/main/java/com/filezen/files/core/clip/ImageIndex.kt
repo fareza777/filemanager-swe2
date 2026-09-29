@@ -1,18 +1,21 @@
 package com.filezen.files.core.clip
 
+import android.content.Context
 import android.util.Log
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
+import androidx.work.WorkManager
+import androidx.work.workDataOf
 import com.filezen.files.core.vec.VecIndex
 import com.filezen.files.data.db.ImgEmbedding
 import com.filezen.files.data.db.ZenDatabase
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -21,7 +24,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * the `img_embeddings` table (same vec_f16 scheme as document chunks).
  * Incremental: re-embeds only new or changed files.
  */
-class ImageIndex(private val db: ZenDatabase, private val clip: ClipEngine) {
+class ImageIndex(private val app: Context, private val db: ZenDatabase, private val clip: ClipEngine) {
 
     data class Progress(val total: Int, val done: Int, val current: String = "")
     data class Hit(val path: String, val score: Float)
@@ -30,10 +33,8 @@ class ImageIndex(private val db: ZenDatabase, private val clip: ClipEngine) {
     val progress: StateFlow<Progress?> = _progress
     val indexedCount = db.imgIndex().count()
 
-    /** App-level scope — indexing keeps running when the user leaves the
-     *  Search screen or switches tabs; it only dies with the process. */
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val running = AtomicBoolean(false)
+    /** New work is coalesced through this flag + unique-work queueing, so a
+     *  flood of kicks never spawns overlapping passes. */
     private val queued = AtomicBoolean(false)
 
     companion object {
@@ -47,24 +48,31 @@ class ImageIndex(private val db: ZenDatabase, private val clip: ClipEngine) {
     fun indexable(f: File): Boolean =
         f.isFile && f.length() > 0 && f.extension.lowercase() in EXTENSIONS
 
-    /** Request an incremental sync — returns immediately. The pass runs on an
-     *  app-level scope, so it continues while the user browses other pages.
-     *  Calls arriving mid-run are coalesced into one follow-up pass. */
+    /** Request an incremental sync — returns immediately. The work runs in a
+     *  WorkManager expedited worker: it keeps going when the user leaves the
+     *  app, and if the process is killed it is rescheduled and resumes from
+     *  the rows already committed — never from zero. */
     fun kick() {
         if (!clip.isReady) return
         queued.set(true)
-        if (!running.compareAndSet(false, true)) return
-        scope.launch {
-            try {
-                while (queued.getAndSet(false)) runPass()
-            } finally {
-                running.set(false)
-                _progress.value = null
-                // A kick landing during teardown would otherwise be lost.
-                if (queued.get()) kick()
-            }
+        WorkManager.getInstance(app).enqueueUniqueWork(
+            PhotoIndexWorker.WORK_NAME, ExistingWorkPolicy.APPEND_OR_REPLACE,
+            OneTimeWorkRequestBuilder<PhotoIndexWorker>()
+                .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+                .build())
+    }
+
+    /** Run queued passes until none remain — called by [PhotoIndexWorker]. */
+    suspend fun drainQueue() {
+        try {
+            while (queued.getAndSet(false)) runPass()
+        } finally {
+            _progress.value = null
         }
     }
+
+    /** Drop every row — used by the rebuild work request. */
+    suspend fun clearAll() { db.imgIndex().clear() }
 
     private suspend fun runPass() {
         val dao = db.imgIndex()
@@ -104,12 +112,16 @@ class ImageIndex(private val db: ZenDatabase, private val clip: ClipEngine) {
         _progress.value = null
     }
 
-    /** Clear everything and re-index — also backgrounded. */
+    /** Clear everything and re-index — same backgrounded worker path. */
     fun rebuildAll() {
-        scope.launch {
-            db.imgIndex().clear()
-            kick()
-        }
+        if (!clip.isReady) return
+        queued.set(true)
+        WorkManager.getInstance(app).enqueueUniqueWork(
+            PhotoIndexWorker.WORK_NAME, ExistingWorkPolicy.APPEND_OR_REPLACE,
+            OneTimeWorkRequestBuilder<PhotoIndexWorker>()
+                .setInputData(workDataOf(PhotoIndexWorker.KEY_REBUILD to true))
+                .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+                .build())
     }
 
     /** Text → photo hits, best-first. */
