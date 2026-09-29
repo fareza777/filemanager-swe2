@@ -81,8 +81,17 @@ class ImageIndex(private val app: Context, private val db: ZenDatabase, private 
             .map { File(it.path) }
             .filter { indexable(it) && it.exists() }
 
-        val live = candidates.mapTo(HashSet()) { it.absolutePath }
-        for (gone in stored.keys - live) { dao.remove(gone); stored.remove(gone) }
+        // Prune only rows whose file is confirmed gone. The file index is a
+        // discovery source, not ground truth: while it rebuilds (every app
+        // start) it briefly returns partial/empty rows — pruning by index
+        // membership wiped the whole embedding table mid-pass (the "reset"
+        // users saw), so existence on disk is the check instead.
+        for (stale in stored.keys.filter { !File(it).exists() }) {
+            dao.remove(stale); stored.remove(stale)
+        }
+        // And if the file index currently sees no images at all, it's almost
+        // certainly mid-rebuild — skip this pass rather than act on bad data.
+        if (candidates.isEmpty() && stored.isNotEmpty()) return
 
         val todo = candidates.filter { f ->
             val m = stored[f.absolutePath]

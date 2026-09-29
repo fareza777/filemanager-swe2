@@ -53,7 +53,8 @@ class PhotoIndexWorker(ctx: Context, params: WorkerParameters) :
                 .setOngoing(true)
                 .setSilent(true)
                 .build()
-            return ForegroundInfo(NOTIF_ID, n)
+            return ForegroundInfo(NOTIF_ID, n,
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
         }
     }
 }
