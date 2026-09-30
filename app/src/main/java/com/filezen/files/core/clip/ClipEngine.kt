@@ -43,7 +43,13 @@ import kotlin.math.sqrt
 class ClipEngine(private val app: Context) {
 
     private val dir get() = File(app.filesDir, "clip")
-    private val visionFile get() = File(dir, "vision_model_q4.onnx")
+    private val visionFile get() = File(dir, "vision_model_fp16.onnx")
+    private val versionFile get() = File(dir, "model.ver")
+
+    /** Bump when the encoder lineup changes — embeddings from a different
+     *  model quality shouldn't mix in the index. v1 = q4, v2 = int8 (dropped:
+     *  ConvInteger unsupported on Android ORT), v3 = fp16. */
+    private val modelVersion = 3
     private val textFile get() = File(dir, "text_model_int8.onnx")
     private val vocabFile get() = File(dir, "vocab.txt")
     private val denseFile get() = File(dir, "dense.safetensors")
@@ -64,8 +70,8 @@ class ClipEngine(private val app: Context) {
     private data class Part(val url: String, val file: File, val label: String, val size: Long)
 
     private fun parts(): List<Part> = listOf(
-        Part("$HF/Xenova/clip-vit-base-patch32/resolve/main/onnx/vision_model_q4.onnx",
-            visionFile, "image encoder", 63_642_858),
+        Part("$HF/Xenova/clip-vit-base-patch32/resolve/main/onnx/vision_model_fp16.onnx",
+            visionFile, "image encoder", 176_080_659),
         Part("$HF/sentence-transformers/clip-ViT-B-32-multilingual-v1/resolve/main/onnx/model_qint8_arm64.onnx",
             textFile, "multilingual text encoder", 135_336_307),
         Part("$HF/sentence-transformers/clip-ViT-B-32-multilingual-v1/resolve/main/vocab.txt",
@@ -90,6 +96,9 @@ class ClipEngine(private val app: Context) {
             }
             // sanity — every file must be fully present
             if (!isReady) error("Download incomplete — try again")
+            // delete stale encoders from older versions — they only waste space
+            File(dir, "vision_model_q4.onnx").delete()
+            File(dir, "vision_model_int8.onnx").delete()
         } finally {
             downloading = false
             _dl.value = null
@@ -120,6 +129,16 @@ class ClipEngine(private val app: Context) {
         }
     }
 
+    /** True when a downloaded model predates [modelVersion] — the caller
+     *  should wipe the image index once so rows get re-embedded. */
+    fun needsReindex(): Boolean {
+        if (!isReady) return false
+        val v = runCatching { versionFile.readText().trim().toInt() }.getOrDefault(0)
+        if (v >= modelVersion) return false
+        runCatching { versionFile.writeText(modelVersion.toString()) }
+        return true
+    }
+
     // ---------- inference ----------
 
     private val env by lazy { OrtEnvironment.getEnvironment() }
@@ -141,6 +160,7 @@ class ClipEngine(private val app: Context) {
     suspend fun embedImage(src: File): FloatArray = withContext(Dispatchers.Default) {
         ensureLoaded()
         val bmp = decode(src) ?: error("cannot decode image")
+        if (bmp.width < 96 || bmp.height < 96) { bmp.recycle(); error("too small to be a photo") }
         val px = preprocess(bmp)
         bmp.recycle()
         OnnxTensor.createTensor(env, FloatBuffer.wrap(px), longArrayOf(1, 3, 224, 224))
@@ -153,12 +173,24 @@ class ClipEngine(private val app: Context) {
             }
     }
 
-    /** Tokenise → transformer → masked mean-pool → Dense → L2-norm. */
+    /** Tokenise → transformer → masked mean-pool → Dense → L2-norm.
+     *  The query is embedded twice — raw and inside a caption template — and
+     *  averaged; CLIP was trained on captioned photos ("a photo of X"), so the
+     *  template form pulls noticeably better matches for short queries. */
     suspend fun embedText(query: String): FloatArray = withContext(Dispatchers.Default) {
         ensureLoaded()
-        val (ids, mask) = tokenizer!!.encode(query)
+        val template = if (query.all { it.code < 128 }) "a photo of $query"
+            else "foto $query"
+        val a = encodeOnce(query)
+        val b = encodeOnce(template)
+        for (i in a.indices) a[i] = (a[i] + b[i]) * 0.5f
+        normalize(a)
+    }
+
+    private fun encodeOnce(q: String): FloatArray {
+        val (ids, mask) = tokenizer!!.encode(q)
         val shape = longArrayOf(1, ids.size.toLong())
-        OnnxTensor.createTensor(env, LongBuffer.wrap(ids), shape).use { idsT ->
+        return OnnxTensor.createTensor(env, LongBuffer.wrap(ids), shape).use { idsT ->
             OnnxTensor.createTensor(env, LongBuffer.wrap(mask), shape).use { maskT ->
                 text!!.run(mapOf(
                     "input_ids" to idsT,

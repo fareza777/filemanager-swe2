@@ -49,7 +49,10 @@ class FileZenApp : Application() {
             // Then refresh the document-content index (incremental — cheap once built).
             runCatching { container.contentIndex.sync() }
             // Photo embeddings too — only when the CLIP model is downloaded.
-            runCatching { container.imageIndex.kick() }
+            runCatching {
+                if (container.clip.needsReindex()) container.db.imgIndex().clear()
+                container.imageIndex.kick()
+            }
             // Folder pairs flagged "sync on open".
             runCatching { container.syncRunner.runOnOpenPairs() }
         }

@@ -41,7 +41,7 @@ class ImageIndex(private val app: Context, private val db: ZenDatabase, private 
         val EXTENSIONS = setOf("jpg", "jpeg", "png", "webp", "gif", "bmp", "heic", "heif")
         /** CLIP cosine sims on normalised vecs live ~0.15–0.40 — below this the
          *  match is noise. */
-        private const val MIN_SCORE = 0.19f
+        private const val MIN_SCORE = 0.21f
         private const val TAG = "ImageIndex"
     }
 
@@ -139,7 +139,11 @@ class ImageIndex(private val app: Context, private val db: ZenDatabase, private 
         val qv = clip.embedText(query)
         val rows = db.imgIndex().all().filter { it.embedding.isNotEmpty() }
         val knn = VecIndex.knn(qv, rows.map { it.path to it.embedding }, k = k)
-        knn.map { (path, sim) -> Hit(path, sim) }
+        val hits = knn.map { (path, sim) -> Hit(path, sim) }
             .filter { it.score >= MIN_SCORE && File(it.path).exists() }
+        // Relative cutoff: junk neighbours can sit just above the floor for
+        // any query — keep only hits reasonably close to the best match.
+        val top = hits.firstOrNull()?.score ?: return@withContext emptyList()
+        return@withContext hits.filter { it.score >= maxOf(MIN_SCORE, top * 0.75f) }
     }
 }
