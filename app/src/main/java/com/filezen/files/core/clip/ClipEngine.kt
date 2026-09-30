@@ -150,8 +150,16 @@ class ClipEngine(private val app: Context) {
     @Synchronized
     private fun ensureLoaded() {
         if (!isReady) error("model not downloaded")
-        if (vision == null) vision = env.createSession(visionFile.absolutePath)
-        if (text == null) text = env.createSession(textFile.absolutePath)
+        if (vision == null) vision = env.createSession(visionFile.absolutePath,
+            OrtSession.SessionOptions().apply {
+                setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
+                setIntraOpNumThreads(4)
+            })
+        if (text == null) text = env.createSession(textFile.absolutePath,
+            OrtSession.SessionOptions().apply {
+                setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
+                setIntraOpNumThreads(2)
+            })
         if (tokenizer == null) tokenizer = WordPieceTokenizer(vocabFile)
         if (dense == null) dense = loadDense(denseFile)
     }

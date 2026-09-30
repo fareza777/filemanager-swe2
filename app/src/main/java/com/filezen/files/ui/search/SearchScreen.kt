@@ -208,6 +208,21 @@ fun SearchScreen(
             if (mode == "photos") {
                 val dl = clipDl
                 val ip = imgProgress
+                val ctx = androidx.compose.ui.platform.LocalContext.current
+                val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+                var battRestricted by remember { mutableStateOf(true) }
+                fun refreshBatt() {
+                    val pm = ctx.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager
+                    battRestricted = !pm.isIgnoringBatteryOptimizations(ctx.packageName)
+                }
+                LaunchedEffect(Unit) { refreshBatt() }
+                DisposableEffect(lifecycleOwner) {
+                    val obs = androidx.lifecycle.LifecycleEventObserver { _, ev ->
+                        if (ev == androidx.lifecycle.Lifecycle.Event.ON_RESUME) refreshBatt()
+                    }
+                    lifecycleOwner.lifecycle.addObserver(obs)
+                    onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
+                }
                 ElevatedCard(
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                     shape = MaterialTheme.shapes.large,
@@ -258,6 +273,21 @@ fun SearchScreen(
                                     Text("Search from what a photo shows — English & Indonesian both work.",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                            if (battRestricted && clipReady) {
+                                TextButton(
+                                    onClick = {
+                                        runCatching {
+                                            ctx.startActivity(android.content.Intent(
+                                                android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                                                android.net.Uri.parse("package:${ctx.packageName}")))
+                                        }
+                                    },
+                                    contentPadding = PaddingValues(0.dp),
+                                ) {
+                                    Text("Keep indexing when app is closed →",
+                                        style = MaterialTheme.typography.labelSmall)
                                 }
                             }
                         }

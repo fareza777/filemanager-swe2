@@ -29,6 +29,7 @@
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
     <!-- Uninstall apps from the Apps & data page (user confirms via system dialog) -->
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!-- Shizuku (power file access) — package visibility to detect the app. -->
     <queries>

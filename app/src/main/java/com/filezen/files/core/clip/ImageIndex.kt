@@ -99,11 +99,16 @@ class ImageIndex(private val app: Context, private val db: ZenDatabase, private 
         }
         if (todo.isEmpty()) { _progress.value = null; return }
 
-        var done = 0
-        _progress.value = Progress(todo.size, 0)
+        // Progress counts everything already embedded too — a resumed pass
+        // shows "N/M" where N includes prior work, so it doesn't look like a
+        // restart from zero.
+        var done = candidates.count { f ->
+            stored[f.absolutePath]?.embedding?.isNotEmpty() == true }
+        val total = done + todo.size
+        _progress.value = Progress(total, done)
         for (f in todo) {
             currentCoroutineContext().ensureActive()
-            _progress.value = Progress(todo.size, done, f.name)
+            _progress.value = Progress(total, done, f.name)
             try {
                 val v = clip.embedImage(f)
                 dao.put(ImgEmbedding(f.absolutePath,
