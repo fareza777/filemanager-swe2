@@ -107,6 +107,9 @@ data class ImgEmbedding(
     val embedding: ByteArray,
     val size: Long,
     val lastModified: Long,
+    /** OCR'd text of the image (first ~400 chars) — lets "bukti transfer"
+     *  find receipt screenshots whose words literally match the query. */
+    val ocr: String = "",
 )
 
 /**

@@ -48,8 +48,8 @@ class ClipEngine(private val app: Context) {
 
     /** Bump when the encoder lineup changes — embeddings from a different
      *  model quality shouldn't mix in the index. v1 = q4, v2 = int8 (dropped:
-     *  ConvInteger unsupported on Android ORT), v3 = fp16. */
-    private val modelVersion = 3
+     *  ConvInteger unsupported on Android ORT), v3 = fp16, v4 = +OCR text. */
+    private val modelVersion = 5
     private val textFile get() = File(dir, "text_model_int8.onnx")
     private val vocabFile get() = File(dir, "vocab.txt")
     private val denseFile get() = File(dir, "dense.safetensors")

@@ -29,6 +29,7 @@ class ImageIndex(private val app: Context, private val db: ZenDatabase, private 
     data class Progress(val total: Int, val done: Int, val current: String = "")
     data class Hit(val path: String, val score: Float)
 
+    private val ocr = OcrEngine()
     private val _progress = MutableStateFlow<Progress?>(null)
     val progress: StateFlow<Progress?> = _progress
     val indexedCount = db.imgIndex().count()
@@ -42,6 +43,10 @@ class ImageIndex(private val app: Context, private val db: ZenDatabase, private 
         /** CLIP cosine sims on normalised vecs live ~0.15–0.40 — below this the
          *  match is noise. */
         private const val MIN_SCORE = 0.21f
+        /** Score added when the image's OCR text contains every query token —
+         *  strong enough to outrank visually-similar but textually-irrelevant
+         *  photos, small enough not to drown real visual matches. */
+        private const val OCR_BOOST = 0.10f
         private const val TAG = "ImageIndex"
     }
 
@@ -122,8 +127,9 @@ class ImageIndex(private val app: Context, private val db: ZenDatabase, private 
             _progress.value = Progress(total, done, f.name)
             try {
                 val v = clip.embedImage(f)
+                val text = ocr.read(f)
                 dao.put(ImgEmbedding(f.absolutePath,
-                    VecIndex.pack16(v), f.length(), f.lastModified()))
+                    VecIndex.pack16(v), f.length(), f.lastModified(), text))
             } catch (t: Throwable) {
                 currentCoroutineContext().ensureActive()
                 Log.w(TAG, "embed failed: ${f.name}", t)
@@ -155,11 +161,28 @@ class ImageIndex(private val app: Context, private val db: ZenDatabase, private 
         val qv = clip.embedText(query)
         val rows = db.imgIndex().all().filter { it.embedding.isNotEmpty() }
         val knn = VecIndex.knn(qv, rows.map { it.path to it.embedding }, k = k)
-        val hits = knn.map { (path, sim) -> Hit(path, sim) }
+        // OCR channel: a receipt/screenshot whose recognised text literally
+        // contains every query token gets a boost — visual CLIP can't read
+        // text, so this is what makes "bukti transfer" find transfer-proof
+        // screenshots instead of just visually similar photos.
+        val toks = query.lowercase().split(Regex("\\s+")).filter { it.length >= 3 }
+        val ocrByPath = rows.associate { it.path to it.ocr }
+        val hits = knn.map { (path, sim) ->
+            val text = ocrByPath[path].orEmpty().lowercase()
+            val matched = toks.count { text.contains(it) }
+            val boost = when {
+                text.isEmpty() -> 0f
+                toks.isNotEmpty() && matched == toks.size -> OCR_BOOST
+                matched > 0 -> OCR_BOOST / 2
+                else -> 0f
+            }
+            Hit(path, sim + boost)
+        }.sortedByDescending { it.score }
             .filter { it.score >= MIN_SCORE && !isJunkPath(it.path) && File(it.path).exists() }
         // Relative cutoff: junk neighbours can sit just above the floor for
-        // any query — keep only hits reasonably close to the best match.
+        // any query — keep only hits reasonably close to the best match. The
+        // loose factor keeps recall high so everything relevant shows up.
         val top = hits.firstOrNull()?.score ?: return@withContext emptyList()
-        return@withContext hits.filter { it.score >= maxOf(MIN_SCORE, top * 0.75f) }
+        return@withContext hits.filter { it.score >= maxOf(MIN_SCORE, top * 0.65f) }
     }
 }

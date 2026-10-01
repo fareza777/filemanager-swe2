@@ -15,8 +15,8 @@ android {
         applicationId = "com.filezen.files"
         minSdk = 26
         targetSdk = 35
-        versionCode = 35
-        versionName = "1.6.6"
+        versionCode = 36
+        versionName = "1.6.7"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // PRODUCTION TODO: replace with your real AdMob App ID from
@@ -118,6 +118,7 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     // ONNX Runtime for on-device CLIP embeddings (AI photo search)
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.22.0")
+    implementation("com.google.mlkit:text-recognition:16.0.1") // OCR for photo search (bukti transfer, receipts)
     implementation("com.github.luben:zstd-jni:1.5.7-3@aar") // seekable zstd — Android AAR packs the native .so into jniLibs
     testImplementation("com.github.luben:zstd-jni:1.5.7-3") // plain jar (bundled linux .so) for JVM unit tests
     implementation("com.tom-roush:pdfbox-android:2.0.27.0") { // content search: PDF text
