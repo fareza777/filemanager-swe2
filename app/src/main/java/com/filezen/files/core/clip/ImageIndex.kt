@@ -46,7 +46,18 @@ class ImageIndex(private val app: Context, private val db: ZenDatabase, private 
     }
 
     fun indexable(f: File): Boolean =
-        f.isFile && f.length() > 0 && f.extension.lowercase() in EXTENSIONS
+        f.isFile && f.length() > 0 && f.extension.lowercase() in EXTENSIONS &&
+            !isJunkPath(f.absolutePath)
+
+    /** Paths that carry app-generated imagery rather than user photos:
+     *  hidden directories (.Statuses, .thumbnails, .trash, .Shared), sticker
+     *  packs (WhatsApp & friends ship hundreds of webp stickers/icons that
+     *  embed fine but pollute every result), and emoji/sticker caches. */
+    fun isJunkPath(path: String): Boolean {
+        val segs = path.lowercase().split('/')
+        if (segs.any { it.startsWith('.') && it.length > 1 }) return true
+        return segs.any { it.contains("sticker") || it.contains("emoji") }
+    }
 
     /** Request an incremental sync — returns immediately. The work runs in a
      *  WorkManager expedited worker: it keeps going when the user leaves the
@@ -86,7 +97,7 @@ class ImageIndex(private val app: Context, private val db: ZenDatabase, private 
         // start) it briefly returns partial/empty rows — pruning by index
         // membership wiped the whole embedding table mid-pass (the "reset"
         // users saw), so existence on disk is the check instead.
-        for (stale in stored.keys.filter { !File(it).exists() }) {
+        for (stale in stored.keys.filter { !File(it).exists() || isJunkPath(it) }) {
             dao.remove(stale); stored.remove(stale)
         }
         // And if the file index currently sees no images at all, it's almost
@@ -145,7 +156,7 @@ class ImageIndex(private val app: Context, private val db: ZenDatabase, private 
         val rows = db.imgIndex().all().filter { it.embedding.isNotEmpty() }
         val knn = VecIndex.knn(qv, rows.map { it.path to it.embedding }, k = k)
         val hits = knn.map { (path, sim) -> Hit(path, sim) }
-            .filter { it.score >= MIN_SCORE && File(it.path).exists() }
+            .filter { it.score >= MIN_SCORE && !isJunkPath(it.path) && File(it.path).exists() }
         // Relative cutoff: junk neighbours can sit just above the floor for
         // any query — keep only hits reasonably close to the best match.
         val top = hits.firstOrNull()?.score ?: return@withContext emptyList()

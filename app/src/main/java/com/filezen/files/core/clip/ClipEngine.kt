@@ -187,11 +187,15 @@ class ClipEngine(private val app: Context) {
      *  template form pulls noticeably better matches for short queries. */
     suspend fun embedText(query: String): FloatArray = withContext(Dispatchers.Default) {
         ensureLoaded()
-        val template = if (query.all { it.code < 128 }) "a photo of $query"
-            else "foto $query"
-        val a = encodeOnce(query)
-        val b = encodeOnce(template)
-        for (i in a.indices) a[i] = (a[i] + b[i]) * 0.5f
+        // Embed raw + two caption templates and average — ensemble of phrasings
+        // is more robust than any single one for short queries.
+        val templates = if (query.all { it.code < 128 })
+            listOf(query, "a photo of $query", "a picture of $query")
+        else listOf(query, "foto $query", "gambar $query")
+        val a = encodeOnce(templates[0])
+        val b = encodeOnce(templates[1])
+        val c = encodeOnce(templates[2])
+        for (i in a.indices) a[i] = (a[i] + b[i] + c[i]) / 3f
         normalize(a)
     }
 
