@@ -15,8 +15,8 @@ android {
         applicationId = "com.filezen.files"
         minSdk = 26
         targetSdk = 35
-        versionCode = 37
-        versionName = "1.6.8"
+        versionCode = 38
+        versionName = "1.6.9"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // PRODUCTION TODO: replace with your real AdMob App ID from

@@ -199,6 +199,84 @@ class ClipEngine(private val app: Context) {
         normalize(a)
     }
 
+    /** Query expansion for Indonesian: the multilingual text encoder scores
+     *  Indonesian phrases ~0.10 below their English equivalents on the same
+     *  images (measured on the real index). Translating common photo-search
+     *  terms first lifts them to English-level accuracy; the raw query stays
+     *  as a variant so unmapped words still go through the multilingual model.
+     *  Multiword phrases match before single tokens. */
+    fun expandQueries(query: String): List<String> {
+        val out = mutableListOf(query)
+        val lower = query.lowercase()
+        for ((id, en) in ID_PHRASES)
+            if (lower.contains(id)) out += lower.replace(id, en)
+        val toks = lower.split(Regex("\\s+"))
+        val mapped = toks.map { ID_WORDS[it] }
+        if (mapped.any { it != null })
+            out += toks.mapIndexed { i, _ -> mapped[i] ?: toks[i] }.joinToString(" ")
+        return out.distinct()
+    }
+
+    private val ID_PHRASES = mapOf(
+        "kerja bakti" to "community work", "bukti transfer" to "transfer receipt",
+        "ulang tahun" to "birthday", "tahun baru" to "new year", "selamat pagi" to "good morning",
+        "tanda tangan" to "signature", "kartu keluarga" to "family card",
+        "matahari terbenam" to "sunset", "matahari terbit" to "sunrise",
+        "rumah sakit" to "hospital", "pakaian adat" to "traditional costume",
+        "pasar malam" to "night market", "kolam renang" to "swimming pool",
+        "kebun binatang" to "zoo", "air terjun" to "waterfall",
+        "sepeda motor" to "motorcycle", "mobil polisi" to "police car",
+        "kebun teh" to "tea plantation", "pantai pasir" to "sandy beach",
+    )
+
+    private val ID_WORDS = mapOf(
+        "foto" to "photo", "gambar" to "picture", "potret" to "portrait",
+        "rapat" to "meeting", "kerja" to "work", "bakti" to "service",
+        "transfer" to "transfer", "bukti" to "proof", "struk" to "receipt",
+        "nota" to "receipt", "invoice" to "invoice", "kuitansi" to "receipt",
+        "pantai" to "beach", "laut" to "sea", "gunung" to "mountain",
+        "sawah" to "rice field", "kebun" to "garden", "hutan" to "forest",
+        "danau" to "lake", "sungai" to "river", "kota" to "city",
+        "desa" to "village", "kampung" to "village", "rumah" to "house",
+        "kantor" to "office", "sekolah" to "school", "masjid" to "mosque",
+        "gereja" to "church", "pura" to "temple", "candi" to "temple",
+        "kucing" to "cat", "anjing" to "dog", "burung" to "bird",
+        "ikan" to "fish", "ayam" to "chicken", "kambing" to "goat",
+        "sapi" to "cow", "kerbau" to "buffalo", "kuda" to "horse",
+        "bunga" to "flower", "pohon" to "tree", "daun" to "leaf",
+        "makanan" to "food", "kue" to "cake", "kopi" to "coffee",
+        "pasar" to "market", "toko" to "shop", "mall" to "mall",
+        "jalan" to "street", "mobil" to "car", "motor" to "motorcycle",
+        "sepeda" to "bicycle", "bus" to "bus", "kereta" to "train",
+        "pesawat" to "airplane", "kapal" to "ship", "perahu" to "boat",
+        "anak" to "child", "bayi" to "baby", "keluarga" to "family",
+        "teman" to "friend", "orang" to "person", "pria" to "man",
+        "wanita" to "woman", "selfie" to "selfie", "pesta" to "party",
+        "nikah" to "wedding", "pernikahan" to "wedding", "wisuda" to "graduation",
+        "lebaran" to "eid celebration", "natal" to "christmas",
+        "senja" to "dusk", "sunset" to "sunset", "sunrise" to "sunrise",
+        "langit" to "sky", "awan" to "cloud", "hujan" to "rain",
+        "api" to "fire", "banjir" to "flood", "sampah" to "trash",
+        "acara" to "event", "seminar" to "seminar", "presentasi" to "presentation",
+        "kelas" to "classroom", "dokumen" to "document", "surat" to "letter",
+        "uang" to "money", "dompet" to "wallet", "laptop" to "laptop",
+        "komputer" to "computer", "layar" to "screen", "dokter" to "doctor",
+        "polisi" to "police", "tentara" to "soldier", "guru" to "teacher",
+        "petani" to "farmer", "nelayan" to "fisherman", "tukang" to "worker",
+        "muda" to "young", "tua" to "old", "bersih" to "clean", "kotor" to "dirty",
+        "besar" to "big", "kecil" to "small", "banyak" to "crowd of",
+        "bermain" to "playing", "main" to "play", "tidur" to "sleeping",
+        "makan" to "eating", "minum" to "drinking", "duduk" to "sitting",
+        "berdiri" to "standing", "berlari" to "running", "lari" to "running",
+        "berenang" to "swimming", "memasak" to "cooking", "masak" to "cooking",
+        "membaca" to "reading", "menulis" to "writing", "belajar" to "studying",
+        "tertawa" to "laughing", "tersenyum" to "smiling", "menari" to "dancing",
+        "menyanyi" to "singing", "bernyanyi" to "singing", "olahraga" to "sport",
+        "bersepeda" to "cycling", "memancing" to "fishing", "mancing" to "fishing",
+        "belanja" to "shopping", "salat" to "praying",
+        "beribadah" to "worship", "mengaji" to "reciting quran",
+    )
+
     private fun encodeOnce(q: String): FloatArray {
         val (ids, mask) = tokenizer!!.encode(q)
         val shape = longArrayOf(1, ids.size.toLong())

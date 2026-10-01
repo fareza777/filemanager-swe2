@@ -163,23 +163,41 @@ class ImageIndex(private val app: Context, private val db: ZenDatabase, private 
     /** Text → photo hits, best-first. */
     suspend fun search(query: String, k: Int = 60): List<Hit> = withContext(Dispatchers.Default) {
         if (!clip.isReady) return@withContext emptyList()
-        val qv = clip.embedText(query)
+        // Multi-variant search: the query plus its Indonesian→English
+        // translations (Indonesian scores ~0.10 below English on the same
+        // images). Each image keeps its best score across variants.
+        val variants = clip.expandQueries(query)
+        val qvs = variants.map { clip.embedText(it) }
         val rows = db.imgIndex().all().filter { it.embedding.isNotEmpty() }
-        val knn = VecIndex.knn(qv, rows.map { it.path to it.embedding }, k = k)
+        val pairs = rows.map { it.path to it.embedding }
+        // Sim per path = max cosine over all query variants — take the union
+        // of each variant's knn so a strong match in any variant survives.
+        val best = HashMap<String, Float>()
+        for (qv in qvs) {
+            for ((path, sim) in VecIndex.knn(qv, pairs, k = k))
+                if (sim > (best[path] ?: 0f)) best[path] = sim
+        }
         // OCR channel: a receipt/screenshot whose recognised text literally
         // contains every query token gets a boost — visual CLIP can't read
         // text, so this is what makes "bukti transfer" find transfer-proof
-        // screenshots instead of just visually similar photos.
-        val toks = query.lowercase().split(Regex("\\s+")).filter { it.length >= 3 }
+        // screenshots instead of just visually similar photos. Tokens are
+        // drawn from every variant, so an Indonesian query also matches a
+        // receipt written in English.
+        val toksPerVariant = variants.map { v ->
+            v.lowercase().split(Regex("\\s+")).filter { it.length >= 3 } }
         val ocrByPath = rows.associate { it.path to it.ocr }
-        val hits = knn.map { (path, sim) ->
+        val hits = best.map { (path, sim) ->
             val text = ocrByPath[path].orEmpty().lowercase()
-            val matched = toks.count { text.contains(it) }
-            val boost = when {
-                text.isEmpty() -> 0f
-                toks.isNotEmpty() && matched == toks.size -> OCR_BOOST
-                matched > 0 -> OCR_BOOST / 2
-                else -> 0f
+            // Boost = best per-variant match: all tokens of one variant →
+            // full boost, any token → half.
+            var boost = 0f
+            if (text.isNotEmpty()) {
+                for (toks in toksPerVariant) {
+                    if (toks.isEmpty()) continue
+                    val matched = toks.count { text.contains(it) }
+                    if (matched == toks.size) { boost = OCR_BOOST; break }
+                    if (matched > 0 && boost == 0f) boost = OCR_BOOST / 2
+                }
             }
             Hit(path, sim + boost)
         }.sortedByDescending { it.score }
