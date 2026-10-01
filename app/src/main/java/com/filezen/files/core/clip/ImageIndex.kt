@@ -39,7 +39,10 @@ class ImageIndex(private val app: Context, private val db: ZenDatabase, private 
     private val queued = AtomicBoolean(false)
 
     companion object {
-        val EXTENSIONS = setOf("jpg", "jpeg", "png", "webp", "gif", "bmp", "heic", "heif")
+        /** webp excluded: on Android it's almost never a user photo — it's
+         *  WhatsApp/Telegram stickers, emoji packs and app icons that pollute
+         *  every result. jpg/png/heic cover real cameras. */
+        val EXTENSIONS = setOf("jpg", "jpeg", "png", "gif", "bmp", "heic", "heif")
         /** CLIP cosine sims on normalised vecs live ~0.15–0.40 — below this the
          *  match is noise. */
         private const val MIN_SCORE = 0.21f
@@ -102,7 +105,9 @@ class ImageIndex(private val app: Context, private val db: ZenDatabase, private 
         // start) it briefly returns partial/empty rows — pruning by index
         // membership wiped the whole embedding table mid-pass (the "reset"
         // users saw), so existence on disk is the check instead.
-        for (stale in stored.keys.filter { !File(it).exists() || isJunkPath(it) }) {
+        // indexable() already encodes: file exists, supported extension,
+        // non-junk path — stale rows from an older ruleset get cleaned too.
+        for (stale in stored.keys.filter { !indexable(File(it)) }) {
             dao.remove(stale); stored.remove(stale)
         }
         // And if the file index currently sees no images at all, it's almost
@@ -178,7 +183,7 @@ class ImageIndex(private val app: Context, private val db: ZenDatabase, private 
             }
             Hit(path, sim + boost)
         }.sortedByDescending { it.score }
-            .filter { it.score >= MIN_SCORE && !isJunkPath(it.path) && File(it.path).exists() }
+            .filter { it.score >= MIN_SCORE && indexable(File(it.path)) }
         // Relative cutoff: junk neighbours can sit just above the floor for
         // any query — keep only hits reasonably close to the best match. The
         // loose factor keeps recall high so everything relevant shows up.
