@@ -50,6 +50,10 @@ class ImageIndex(private val app: Context, private val db: ZenDatabase, private 
          *  strong enough to outrank visually-similar but textually-irrelevant
          *  photos, small enough not to drown real visual matches. */
         private const val OCR_BOOST = 0.10f
+        /** Smaller boost for filename/folder token matches ("bukti-transfer.jpg",
+         *  "…/kerja bakti/IMG_001.jpg") — weaker signal than recognised text but
+         *  free: many users name screenshots and downloaded images meaningfully. */
+        private const val NAME_BOOST = 0.05f
         private const val TAG = "ImageIndex"
     }
 
@@ -160,6 +164,34 @@ class ImageIndex(private val app: Context, private val db: ZenDatabase, private 
                 .build())
     }
 
+    /** Mean cosine of each image against a fixed set of neutral captions —
+     *  CLIP retrieval suffers "hubness": some images sit high against every
+     *  query and surface as junk for anything unrelated. Subtracting this
+     *  baseline suppresses them without touching real matches. Computed once
+     *  per index state and cached. */
+    private var hubCache: Pair<Int, Map<String, Float>>? = null
+
+    private suspend fun hubness(rows: List<ImgEmbedding>): Map<String, Float> {
+        // Cache key: row count + content fingerprint — index mutations that
+        // keep the same size still recompute.
+        val key = rows.size xor rows.fold(0) { a, r -> a + r.path.hashCode() }
+        hubCache?.takeIf { it.first == key }?.let { return it.second }
+        val prompts = listOf(
+            "a photo", "a picture", "an image", "a photo of something",
+            "an ordinary photo", "foto", "gambar")
+        val embs = prompts.map { clip.embedText(it) }
+        val map = HashMap<String, Float>(rows.size)
+        for (r in rows) {
+            val v = VecIndex.unpack16(r.embedding)
+            var s = 0f
+            for (e in embs) s += VecIndex.distance(e, v, VecIndex.Metric.COSINE)
+            map[r.path] = s / embs.size
+        }
+        val res = map
+        hubCache = key to res
+        return res
+    }
+
     /** Text → photo hits, best-first. */
     suspend fun search(query: String, k: Int = 60): List<Hit> = withContext(Dispatchers.Default) {
         if (!clip.isReady) return@withContext emptyList()
@@ -167,16 +199,25 @@ class ImageIndex(private val app: Context, private val db: ZenDatabase, private 
         // translations (Indonesian scores ~0.10 below English on the same
         // images). Each image keeps its best score across variants.
         val variants = clip.expandQueries(query)
+        Log.i(TAG, "search '$query' variants=$variants")
         val qvs = variants.map { clip.embedText(it) }
         val rows = db.imgIndex().all().filter { it.embedding.isNotEmpty() }
         val pairs = rows.map { it.path to it.embedding }
         // Sim per path = max cosine over all query variants — take the union
         // of each variant's knn so a strong match in any variant survives.
         val best = HashMap<String, Float>()
-        for (qv in qvs) {
+        for ((vi, qv) in qvs.withIndex()) {
+            val top = VecIndex.knn(qv, pairs, k = 3).joinToString { "%.3f:%s".format(it.second, it.first.substringAfterLast('/')) }
+            Log.i(TAG, "  variant[$vi]='${variants[vi]}' top3=$top")
             for ((path, sim) in VecIndex.knn(qv, pairs, k = k))
                 if (sim > (best[path] ?: 0f)) best[path] = sim
         }
+        // Hubness suppression: subtract each image's "generic similarity"
+        // baseline, centred on the corpus median so the score scale stays
+        // meaningful — chronically-similar junk drops below real matches.
+        val hub = hubness(rows)
+        val med = hub.values.sorted().let { it[it.size / 2] }
+        for ((path, _) in best) best[path] = best.getValue(path) - ((hub[path] ?: med) - med)
         // OCR channel: a receipt/screenshot whose recognised text literally
         // contains every query token gets a boost — visual CLIP can't read
         // text, so this is what makes "bukti transfer" find transfer-proof
@@ -188,16 +229,26 @@ class ImageIndex(private val app: Context, private val db: ZenDatabase, private 
         val ocrByPath = rows.associate { it.path to it.ocr }
         val hits = best.map { (path, sim) ->
             val text = ocrByPath[path].orEmpty().lowercase()
-            // Boost = best per-variant match: all tokens of one variant →
-            // full boost, any token → half.
+            // Filename + folder names tokenised on separators — users name
+            // screenshots meaningfully ("bukti-transfer.jpg") and Android
+            // folders carry context ("Screenshots", "WhatsApp Images").
+            val name = path.lowercase().replace(Regex("[/._\\-+()]"), " ")
             var boost = 0f
-            if (text.isNotEmpty()) {
-                for (toks in toksPerVariant) {
-                    if (toks.isEmpty()) continue
+            for (toks in toksPerVariant) {
+                if (toks.isEmpty()) continue
+                if (text.isNotEmpty()) {
                     val matched = toks.count { text.contains(it) }
                     if (matched == toks.size) { boost = OCR_BOOST; break }
                     if (matched > 0 && boost == 0f) boost = OCR_BOOST / 2
                 }
+            }
+            // Filename channel evaluated independently and added on top —
+            // a receipt named "bukti-transfer" can legitimately carry both.
+            for (toks in toksPerVariant) {
+                if (toks.isEmpty()) continue
+                val matched = toks.count { name.contains(it) }
+                if (matched == toks.size) { boost += NAME_BOOST; break }
+                if (matched > 0 && boost < NAME_BOOST) boost += NAME_BOOST / 2
             }
             Hit(path, sim + boost)
         }.sortedByDescending { it.score }
@@ -206,6 +257,19 @@ class ImageIndex(private val app: Context, private val db: ZenDatabase, private 
         // any query — keep only hits reasonably close to the best match. The
         // loose factor keeps recall high so everything relevant shows up.
         val top = hits.firstOrNull()?.score ?: return@withContext emptyList()
-        return@withContext hits.filter { it.score >= maxOf(MIN_SCORE, top * 0.65f) }
+        val kept = hits.filter { it.score >= maxOf(MIN_SCORE, top * 0.65f) }
+        Log.i(TAG, "  hits=${hits.size} top=$top kept=${kept.size}")
+        // Near-duplicate suppression: two copies of the same photo (before/after
+        // edits, burst shots) shouldn't fill the grid — keep the best-scoring
+        // one when embeddings are nearly identical.
+        val vecByPath = rows.associate { it.path to VecIndex.unpack16(it.embedding) }
+        val seen = ArrayList<FloatArray>()
+        return@withContext kept.filter { h ->
+            val v = vecByPath[h.path] ?: return@filter true
+            if (seen.any { VecIndex.distance(it, v, VecIndex.Metric.COSINE) > 0.985f })
+                return@filter false
+            seen += v
+            true
+        }
     }
 }

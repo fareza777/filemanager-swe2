@@ -898,6 +898,7 @@ class SearchViewModel : ViewModel() {
 
     private var job: Job? = null
     private var cJob: Job? = null
+    private var cJobKind: String? = null
     private var lastRoots: List<File> = emptyList()
     private var lastContentQuery = ""
 
@@ -957,23 +958,38 @@ class SearchViewModel : ViewModel() {
     }
 
     fun photoSearch(q: String) {
+        val t = q.trim()
+        // Index churn re-fires the same query constantly (filesVer bumps on
+        // every watcher tick). A multi-variant CLIP search takes seconds —
+        // cancelling the in-flight identical one starves it forever, so let
+        // it finish; a later bump re-queries once results are in.
+        if (t == lastContentQuery && cJobKind == "photos" && cJob?.isActive == true) return
         cJob?.cancel()
-        if (q.isBlank()) { _photoHits.value = emptyList(); return }
-        lastContentQuery = q.trim()
+        if (t.isBlank()) { _photoHits.value = emptyList(); lastContentQuery = ""; return }
+        lastContentQuery = t
+        cJobKind = "photos"
         _searching.value = true
         cJob = viewModelScope.launch {
-            try { _photoHits.value = c.imageIndex.search(q.trim()) }
+            try { _photoHits.value = c.imageIndex.search(t) }
+            catch (e: Throwable) {
+                if (e !is kotlinx.coroutines.CancellationException)
+                    android.util.Log.e("SearchVM", "photoSearch failed", e)
+                throw e
+            }
             finally { _searching.value = false }
         }
     }
 
     fun contentSearch(q: String) {
+        val t = q.trim()
+        if (t == lastContentQuery && cJobKind == "content" && cJob?.isActive == true) return
         cJob?.cancel()
-        if (q.isBlank()) { _hits.value = emptyList(); return }
-        lastContentQuery = q.trim()
+        if (t.isBlank()) { _hits.value = emptyList(); lastContentQuery = ""; return }
+        lastContentQuery = t
+        cJobKind = "content"
         _searching.value = true
         cJob = viewModelScope.launch {
-            try { _hits.value = c.contentIndex.search(q.trim()) }
+            try { _hits.value = c.contentIndex.search(t) }
             finally { _searching.value = false }
         }
     }

@@ -211,22 +211,97 @@ class ClipEngine(private val app: Context) {
         for ((id, en) in ID_PHRASES)
             if (lower.contains(id)) out += lower.replace(id, en)
         val toks = lower.split(Regex("\\s+"))
-        val mapped = toks.map { ID_WORDS[it] }
-        if (mapped.any { it != null })
-            out += toks.mapIndexed { i, _ -> mapped[i] ?: toks[i] }.joinToString(" ")
+        fun translated(ts: List<String>): String? {
+            val m = ts.map { lookupEn(it) ?: it }
+            return if (m == ts) null else m.joinToString(" ")
+        }
+        translated(toks)?.let { out += it }
+        // Filler-word-free variant: "foto ppsu lagi bersih-bersih" embeds
+        // better as "ppsu bersih-bersih" — intent words dilute the vector.
+        val clean = toks.filter { it !in STOPWORDS }
+        if (clean.size in 1 until toks.size) {
+            val joined = clean.joinToString(" ")
+            out += joined
+            translated(clean)?.let { out += it }
+        }
+        // Single-token variants: when a long mixed query matches nothing,
+        // each translatable content word is tried alone ("rapat kemarin" →
+        // "meeting" still finds meeting photos).
+        for (t in clean) {
+            val en = if (t.length >= 4) lookupEn(t) else null
+            if (en != null && en != t) out += en
+        }
         return out.distinct()
     }
 
+    /** Filler words stripped before embedding — Indonesian intent/function
+     *  words plus the usual English ones. "foto"/"gambar" are listed too:
+     *  in a photo search they only ever mean "show me photos of…". */
+    private val STOPWORDS = setOf(
+        "foto", "gambar", "fotonya", "gambarnya", "cari", "carikan", "tolong",
+        "mohon", "yang", "lagi", "di", "itu", "ini", "sama", "dan", "atau",
+        "semua", "semuanya", "ada", "ku", "nya", "kok", "dong", "nih", "sih",
+        "deh", "ya", "yah", "kan", "banget", "sekali", "pula", "juga", "udah",
+        "sudah", "belum", "masih", "pernah", "akan", "bisa", "dapat", "mau",
+        "ingin", "kayak", "kayaknya", "seperti", "mirip", "tentang", "soal",
+        "the", "a", "an", "of", "my", "me", "show", "find", "please",
+    )
+
+    /** Indonesian→English lookup with light morphology: strips common
+     *  affixes (ber-/me-/pe-/di-/-nya/-kan/…) but only accepts the stem
+     *  when it actually exists in the glossary — so "kemarin" never maps
+     *  to a bogus stem. */
+    private fun lookupEn(t: String): String? {
+        ID_WORDS[t]?.let { return it }
+        for (suf in SUFFIXES)
+            if (t.length > suf.length + 3 && t.endsWith(suf))
+                ID_WORDS[t.dropLast(suf.length)]?.let { return it }
+        for (pre in PREFIXES)
+            if (t.length > pre.length + 3 && t.startsWith(pre)) {
+                val stem = t.drop(pre.length)
+                ID_WORDS[stem]?.let { return it }
+                for (suf in SUFFIXES)
+                    if (stem.length > suf.length + 2 && stem.endsWith(suf))
+                        ID_WORDS[stem.dropLast(suf.length)]?.let { return it }
+            }
+        return null
+    }
+
+    private val SUFFIXES = listOf("lah", "kah", "nya", "kan", "an", "i")
+    private val PREFIXES = listOf(
+        "memper", "diper", "meny", "meng", "men", "mem", "pem", "peng",
+        "pen", "per", "ber", "ter", "pel", "di", "ke", "se")
+
     private val ID_PHRASES = mapOf(
-        "kerja bakti" to "community work", "bukti transfer" to "transfer receipt",
-        "ulang tahun" to "birthday", "tahun baru" to "new year", "selamat pagi" to "good morning",
+        "kerja bakti" to "community work", "gotong royong" to "community work",
+        "bukti transfer" to "transfer receipt", "bukti pembayaran" to "payment receipt",
+        "bukti transaksi" to "transaction receipt", "bukti pembelian" to "purchase receipt",
+        "ulang tahun" to "birthday", "selamat ulang tahun" to "happy birthday",
+        "tahun baru" to "new year", "selamat pagi" to "good morning",
         "tanda tangan" to "signature", "kartu keluarga" to "family card",
+        "kartu identitas" to "id card", "kartu nama" to "business card",
+        "pas foto" to "id photo", "foto bersama" to "group photo",
+        "foto keluarga" to "family photo", "foto nikah" to "wedding photo",
+        "tangkapan layar" to "screenshot", "foto lama" to "old photo",
         "matahari terbenam" to "sunset", "matahari terbit" to "sunrise",
         "rumah sakit" to "hospital", "pakaian adat" to "traditional costume",
         "pasar malam" to "night market", "kolam renang" to "swimming pool",
         "kebun binatang" to "zoo", "air terjun" to "waterfall",
         "sepeda motor" to "motorcycle", "mobil polisi" to "police car",
         "kebun teh" to "tea plantation", "pantai pasir" to "sandy beach",
+        "anak sekolah" to "school children", "orang tua" to "parents",
+        "hari raya" to "holiday celebration", "waktu kecil" to "childhood",
+        "kerja kelompok" to "group work", "bersih bersih" to "cleaning",
+        "bersih-bersih" to "cleaning", "pembersihan pantai" to "beach cleanup",
+        "kembang api" to "fireworks", "taman nasional" to "national park",
+        "lampu lalu lintas" to "traffic light", "pohon natal" to "christmas tree",
+        "anak kucing" to "kitten", "anak anjing" to "puppy",
+        "rumah makan" to "restaurant", "warung makan" to "food stall",
+        "tempat wisata" to "tourist attraction", "gedung tinggi" to "skyscraper",
+        "lautan" to "ocean", "pemandangan" to "scenery",
+        "makan siang" to "lunch", "makan malam" to "dinner",
+        "makan pagi" to "breakfast", "foto selfie" to "selfie",
+        "main bola" to "playing football", "sepak bola" to "football",
     )
 
     private val ID_WORDS = mapOf(
@@ -275,6 +350,110 @@ class ClipEngine(private val app: Context) {
         "bersepeda" to "cycling", "memancing" to "fishing", "mancing" to "fishing",
         "belanja" to "shopping", "salat" to "praying",
         "beribadah" to "worship", "mengaji" to "reciting quran",
+        // places & landmarks
+        "vihara" to "temple", "klenteng" to "temple",
+        "monumen" to "monument", "tugu" to "monument",
+        "patung" to "statue", "jembatan" to "bridge", "menara" to "tower",
+        "gedung" to "building", "hotel" to "hotel",
+        "bandara" to "airport", "stasiun" to "station", "terminal" to "terminal",
+        "pelabuhan" to "harbor", "dermaga" to "pier", "mercusuar" to "lighthouse",
+        "kafe" to "cafe", "cafe" to "cafe", "dapur" to "kitchen",
+        "kamar" to "room", "taman" to "park",
+        "lapangan" to "field", "stadion" to "stadium", "gym" to "gym",
+        // nature & outdoors
+        "ladang" to "field",
+        "bukit" to "hill", "lembah" to "valley", "tebing" to "cliff",
+        "gua" to "cave", "goa" to "cave", "kawah" to "crater",
+        "ombak" to "waves", "pasir" to "sand", "batu" to "rock",
+        "kolam" to "pond",
+        "waduk" to "reservoir", "salju" to "snow", "embun" to "dew",
+        "kabut" to "fog", "mendung" to "overcast", "cerah" to "sunny",
+        "pelangi" to "rainbow", "petir" to "lightning", "badai" to "storm",
+        "rumput" to "grass", "tumbuhan" to "plant", "tanaman" to "plant",
+        "kaktus" to "cactus", "palem" to "palm tree", "kelapa" to "coconut",
+        // events & activities
+        "upacara" to "ceremony", "perayaan" to "celebration", "pawai" to "parade",
+        "karnaval" to "carnival", "festival" to "festival", "konser" to "concert",
+        "pameran" to "exhibition", "lomba" to "competition", "pertandingan" to "match",
+        "lamaran" to "engagement",
+        "liburan" to "vacation", "mudik" to "homecoming trip", "piknik" to "picnic",
+        "berkemah" to "camping", "kemah" to "camping", "mendaki" to "hiking",
+        "pendakian" to "hiking", "perjalanan" to "journey", "wisata" to "tourism",
+        "arisan" to "social gathering", "pengajian" to "religious gathering",
+        "syukuran" to "thanksgiving feast", "kenduri" to "feast",
+        "diskusi" to "discussion", "pelatihan" to "training", "lokakarya" to "workshop",
+        "workshop" to "workshop", "webinar" to "webinar",
+        "ujian" to "exam", "praktikum" to "lab work", "magang" to "internship",
+        // documents & objects
+        "sertifikat" to "certificate", "ijazah" to "diploma", "rapor" to "report card",
+        "piagam" to "certificate",
+        "ktp" to "id card", "sim" to "driver license", "paspor" to "passport",
+        "tiket" to "ticket", "tagihan" to "bill",
+        "jadwal" to "schedule", "poster" to "poster", "spanduk" to "banner",
+        "kalender" to "calendar", "buku" to "book", "majalah" to "magazine",
+        "koran" to "newspaper", "peta" to "map",
+        "televisi" to "tv", "hp" to "phone", "ponsel" to "phone",
+        "kamera" to "camera",
+        "truk" to "truck", "becak" to "rickshaw",
+        "delman" to "horse carriage", "gerobak" to "cart",
+        "helikopter" to "helicopter", "drone" to "drone", "roket" to "rocket",
+        // people & creatures
+        "remaja" to "teenager", "dewasa" to "adult", "lansia" to "elderly",
+        "kerabat" to "relative",
+        "tetangga" to "neighbor", "warga" to "residents", "kerumunan" to "crowd",
+        "penonton" to "audience", "pasukan" to "troops", "prajurit" to "soldier",
+        "ustadz" to "cleric", "pendeta" to "priest", "biksu" to "monk",
+        "hewan" to "animal",
+        "kelinci" to "rabbit", "hamster" to "hamster",
+        "bebek" to "duck", "itik" to "duck",
+        "angsa" to "goose", "kalkun" to "turkey", "merpati" to "pigeon",
+        "elang" to "eagle", "merak" to "peacock", "nuri" to "parrot",
+        "kura" to "turtle", "penyu" to "sea turtle", "buaya" to "crocodile",
+        "ular" to "snake", "kadal" to "lizard", "katak" to "frog",
+        "domba" to "sheep", "keledai" to "donkey",
+        "babi" to "pig", "gajah" to "elephant", "harimau" to "tiger",
+        "singa" to "lion", "macan" to "tiger", "zebra" to "zebra",
+        "jerapah" to "giraffe", "panda" to "panda", "beruang" to "bear",
+        "monyet" to "monkey", "orangutan" to "orangutan", "simpanse" to "chimpanzee",
+        "rusa" to "deer", "tupai" to "squirrel", "tikus" to "rat",
+        "kelelawar" to "bat", "serigala" to "wolf", "rubah" to "fox",
+        "kupu" to "butterfly", "capung" to "dragonfly", "lebah" to "bee",
+        "semut" to "ant", "laba" to "spider", "nyamuk" to "mosquito",
+        "lalat" to "fly", "kecoa" to "cockroach", "belalang" to "grasshopper",
+        "siput" to "snail", "cacing" to "worm", "ubur" to "jellyfish",
+        "gurita" to "octopus", "cumi" to "squid", "bintang" to "star",
+        "paus" to "whale", "lumba" to "dolphin", "hiu" to "shark",
+        // food & drink
+        "minuman" to "drink", "nasi" to "rice", "sarapan" to "breakfast",
+        "mie" to "noodles", "roti" to "bread",
+        "teh" to "tea", "susu" to "milk",
+        "jus" to "juice", "buah" to "fruit", "sayur" to "vegetable",
+        "daging" to "meat", "telur" to "egg", "keju" to "cheese",
+        "coklat" to "chocolate", "permen" to "candy", "es" to "ice",
+        "cemilan" to "snack", "camilan" to "snack", "jajanan" to "snacks",
+        "sate" to "satay", "rendang" to "rendang", "bakso" to "meatball soup",
+        "soto" to "soto soup", "gado" to "gado-gado", "pecel" to "pecel",
+        "pempek" to "pempek", "martabak" to "martabak", "pisang" to "banana",
+        "mangga" to "mango", "jeruk" to "orange", "apel" to "apple",
+        "semangka" to "watermelon", "melon" to "melon", "anggur" to "grape",
+        "durian" to "durian", "rambutan" to "rambutan", "manggis" to "mangosteen",
+        "salak" to "snakefruit", "nanas" to "pineapple", "jambu" to "guava",
+        "pepaya" to "papaya", "cabai" to "chili", "bawang" to "onion",
+        "jahe" to "ginger", "kunyit" to "turmeric", "tomat" to "tomato",
+        "kentang" to "potato", "wortel" to "carrot", "jagung" to "corn",
+        // misc descriptors
+        "warna" to "color", "hitam" to "black", "putih" to "white",
+        "merah" to "red", "biru" to "blue", "hijau" to "green",
+        "kuning" to "yellow", "oranye" to "orange", "ungu" to "purple",
+        "pink" to "pink", "cokelat" to "brown", "abu" to "gray",
+        "malam" to "night", "siang" to "day", "sore" to "afternoon",
+        "pagi" to "morning", "kemarin" to "yesterday", "dulu" to "past",
+        "indah" to "beautiful", "cantik" to "pretty", "ganteng" to "handsome",
+        "lucu" to "cute", "imut" to "cute", "seram" to "scary",
+        "ramai" to "crowded", "sepi" to "quiet", "padat" to "dense",
+        "jelas" to "clear", "buram" to "blurry", "dekat" to "close up",
+        "jauh" to "distant", "dalam" to "inside", "luar" to "outside",
+        "koleksi" to "collection", "suasana" to "atmosphere",
     )
 
     private fun encodeOnce(q: String): FloatArray {
